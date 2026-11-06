@@ -1,17 +1,89 @@
 # Equity Research Platform
 
-A self-hosted platform for institutional-grade equity research and valuation. Scope and principles are in `MASTER_BRIEF.md`.
+A self-hosted application for fundamental equity research and valuation of public companies. It focuses on reproducible, auditable financial calculations: every valuation input is traceable to its source, every output to its calculation steps.
 
-**Current status:** Release 1, milestone **M0 Foundation** (in progress on branch `m0-foundation`). No valuation functionality exists yet. The DCF engine starts in M1.
+> **Not investment advice.** This software is an analytical research tool. Its outputs are model results that depend entirely on data quality and analyst assumptions. They are not recommendations to buy, sell or hold any security. Use at your own risk.
 
-| Document | Purpose |
-|---|---|
-| `MASTER_BRIEF.md` | Product specification (authoritative) |
-| `TECHNICAL_BLUEPRINT.md` | Approved architecture (Revision 2) |
-| `DECISIONS.md` | Architectural decisions and trade-offs |
-| `KNOWN_LIMITATIONS.md` | Data coverage, provider, methodological and operational limitations |
-| `docs/DEVELOPMENT.md` | Setup, commands, tests |
-| `docs/operations/memory.md` | Measured memory vs. estimates |
-| `NEXT_SESSION.md` / `SESSION_LOG.md` | Session handoff and history |
+## Intended users
 
-Quick start (dev): `make setup && make up-dev && make create-admin-dev`, then open `http://localhost:8091`.
+Individual analysts and small research teams who want institutional-style valuation workflows (integrated models, explicit assumptions, scenario and sensitivity analysis, audit history) on infrastructure they control.
+
+## What it does today
+
+The project is under active development. **Implemented and tested:**
+
+- **Valuation engine (`engine/`)**: pure Python with exact decimal arithmetic.
+  - FCFF and FCFE discounted cash flow, with mid-period and stub-period conventions.
+  - Terminal value: value-driver, Gordon growth and exit multiple, with coherence checks.
+  - Equity bridge, IFRS 16 / ASC 842 lease treatments, and treasury-stock-method dilution with double-count safeguards.
+  - Cost of capital: ERP and country-risk separation, regression and bottom-up beta.
+  - Calculation traces, validation reports and deterministic output hashes.
+  - Validated against an **independent reference implementation** and hand-worked benchmarks (`docs/methodology/dcf.md`).
+- **Backend (`backend/`)**: FastAPI service.
+  - Server-side sessions, role-based access (admin, analyst, reviewer), CSRF protection and an append-only audit log.
+  - PostgreSQL with least-privilege roles.
+- **Frontend (`frontend/`)**: React/TypeScript shell with authentication.
+
+**Not yet available:**
+- The valuation engine isn't yet exposed through the API or user interface.
+- Data ingestion. SEC EDGAR ingestion (job queue, worker, company profiles, filings and XBRL facts) is implemented on the `m2-ingestion` branch and not yet merged into `main`.
+- Financial-statement standardization, other data providers, company workspaces, scenarios and sensitivity UI.
+
+## Roadmap
+
+| Milestone | Scope | Status |
+|---|---|---|
+| M0 | Foundation: workspace, auth, audit, deployment | Done |
+| M1 | Valuation engine and methodology | Done |
+| M2 | Data ingestion and standardization (branch `m2-ingestion`): SEC (done), statement mapping, versioned datasets, integrity checks, classification, market and rates data, Excel/CSV import | In progress |
+| M3 | Analyst workflow UI: company → financials → DCF → trace inspection | Planned |
+| M4 | Scenarios, sensitivity analysis, saved immutable valuations, exports | Planned |
+| M5 | Production hardening: backups, deployment, monitoring | Planned |
+| Later releases | Three-statement modelling, research library, comparables, other valuation methods | Planned |
+
+## Architecture
+
+```
+Browser ──► Caddy (static frontend, TLS, security headers)
+               └─► FastAPI API ──► erp_engine (pure calculation library)
+                        │
+                        └─► PostgreSQL (authoritative store)
+```
+
+- **Python 3.12, FastAPI, SQLAlchemy/Alembic, PostgreSQL 17**, **React 19 + TypeScript + Vite**, **Docker Compose**.
+- **Design notes:** `TECHNICAL_BLUEPRINT.md` (architecture), `DECISIONS.md` (decision log), `KNOWN_LIMITATIONS.md` (data, methodology and operational limitations), `docs/methodology/dcf.md` (valuation conventions).
+
+## Getting started (development)
+
+Requirements: Linux with Docker Engine + Compose v2, Python 3.12, Node 24, GNU make.
+
+```bash
+make setup             # project-local uv, Python deps (uv.lock), frontend deps (package-lock.json)
+make up-dev            # creates .env.dev, generates secrets, builds and starts the dev stack
+make create-admin-dev  # first user 'admin'; password in secrets/dev/initial_admin_password
+make check             # lint, type checks, all tests (needs the dev stack running)
+```
+
+Then open `http://localhost:8091`. All dev ports bind to loopback only.
+
+Full instructions: `docs/DEVELOPMENT.md`.
+
+## Data sources
+
+Only free, public sources are used. SEC EDGAR ingestion is implemented on the `m2-ingestion` branch. Other planned providers and their limitations are listed in `KNOWN_LIMITATIONS.md`. No financial data is bundled in this repository.
+
+## Testing
+
+`make check` runs everything: Ruff lint and format checks, import-boundary checks, mypy, ESLint, the TypeScript compiler, and the engine, backend and frontend test suites. Individual suites: `make test-engine`, `make test-backend` (needs the dev stack running, for its database), `make test-frontend`. The engine suite includes golden-output tests. After an intended calculation change, bump `engine/src/erp_engine/version.py` and regenerate them with `ERP_UPDATE_GOLDEN=1 make test-engine`.
+
+## Project status and contributions
+
+This is a personal project in active development. Interfaces and schemas may change. Design history is kept in the repository (`DECISIONS.md`, `SESSION_LOG.md`).
+
+## AI disclosure
+
+This project was developed with substantial help from AI tools, including Claude Code. AI assistance contributed code, documentation, tests and architectural work. The maintainer directs the work and is responsible for reviewing, validating and maintaining it. AI assistance does not guarantee correctness, security or completeness, so verify results independently. No AI provider endorses or sponsors this project.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Adrian Delic de Souza. Third-party dependencies remain under their own licenses.
