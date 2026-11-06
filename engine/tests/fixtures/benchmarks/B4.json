@@ -1,0 +1,31 @@
+{
+  "id": "B4",
+  "method": "tsm",
+  "inputs": {
+    "equity_value": "2000",
+    "basic_shares": "100",
+    "option_tranches": [
+      {
+        "count": "10",
+        "strike": "15"
+      },
+      {
+        "count": "5",
+        "strike": "30"
+      }
+    ]
+  },
+  "expected": {
+    "price": "215/11",
+    "diluted_shares": "4400/43",
+    "in_the_money": [
+      0
+    ]
+  },
+  "doc_rounded": {
+    "price": "19.5454545455",
+    "diluted_shares": "102.3255813953"
+  },
+  "provenance": "Expected values: docs/methodology/dcf.md \u00a714, recomputed by the methodology calculator (forward discount-factor sums, exact rationals / 60-digit decimals). Not produced by the reference or the engine.",
+  "doc_section": "docs/methodology/dcf.md \u00a714 B4"
+}

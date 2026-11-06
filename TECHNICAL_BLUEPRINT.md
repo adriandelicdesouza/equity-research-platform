@@ -595,7 +595,7 @@ FCFF and FCFE values are shown side by side with an explicit reconciliation tabl
 
 **Discount factors and terminal value.**
 - Discount factor: `DF_t = 1 / Π (1 + WACC_i)^{Δt_i}` — supports a **per-period WACC vector** (changing capital structure); constant WACC is the special case.
-- Terminal value discounting: Gordon TV discounted with the final period's end-of-period time by default; a mid-period variant (final mid-period time) is selectable and recorded; exit-multiple TV always at the end of the final period.
+- Terminal value discounting: Gordon TV follows the cash-flow convention (mid-period TV at the final mid-period time when mid-period discounting is on; end-of-period otherwise), with end-of-period as a recorded conservative override; exit-multiple TV always at the end of the final period. *(D27 as amended 2026-11-06; see `docs/methodology/dcf.md` §6.2.)*
 
 ### 7.5 WACC
 
@@ -659,7 +659,7 @@ Three methods; the chosen one and all parameters are stored with the run.
 
 ### 7.6 Terminal value and coherence checks
 
-- **Perpetuity growth:** `TV = FCFF_{N+1} / (WACC − g)` where `FCFF_{N+1}` is either `FCFF_N × (1+g)` or the value-driver form `NOPAT_{N+1} × (1 − g / RONIC)` (selectable; value-driver recommended because it keeps reinvestment consistent with growth).
+- **Perpetuity growth:** `TV = FCFF_{N+1} / (WACC − g)` where `FCFF_{N+1}` is either `FCFF_N × (1+g)` or the value-driver form `NOPAT_{N+1} × (1 − g / RONIC)` (selectable; value-driver recommended because it keeps reinvestment consistent with growth). *Default: value-driver form with RONIC as a required analyst assumption (D35).*
 - **Exit multiple:** `TV = multiple × EBITDA_N` (or EBIT, Revenue).
 - Both always computed when inputs exist; each shows the **implied** counterpart (implied exit multiple from Gordon; implied perpetual growth from the exit multiple).
 

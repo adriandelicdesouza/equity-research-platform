@@ -1,0 +1,83 @@
+{
+  "id": "B3",
+  "method": "fcfe",
+  "convention": "end_of_period",
+  "inputs": {
+    "revenue_0": "1000",
+    "nwc_0": "100",
+    "years": [
+      {
+        "growth": "0.10",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      },
+      {
+        "growth": "0.08",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      },
+      {
+        "growth": "0.06",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      }
+    ],
+    "cost_of_equity": "0.12",
+    "cost_of_debt": "0.06",
+    "cash_yield": "0.03",
+    "cash_path": [
+      "150",
+      "150",
+      "150",
+      "150"
+    ],
+    "debt_path": [
+      "400",
+      "450",
+      "500",
+      "510"
+    ],
+    "terminal": {
+      "form": "simple",
+      "g": "0.02"
+    },
+    "bridge": {
+      "cash": "150",
+      "debt": "400"
+    },
+    "shares": {
+      "basic": "100",
+      "option_tranches": []
+    }
+  },
+  "expected": {
+    "fcfe": [
+      "1347/8",
+      "35753/200",
+      "737267/5000"
+    ],
+    "sum_pv_flows": "69859975/175616",
+    "tv": "37600617/25000",
+    "pv_tv": "188003085/175616",
+    "equity": "9209395/6272",
+    "price": "1841879/125440"
+  },
+  "doc_rounded": {
+    "sum_pv_flows": "397.799603",
+    "tv": "1504.024680",
+    "pv_tv": "1070.535059",
+    "equity": "1468.334662",
+    "price": "14.683347"
+  },
+  "provenance": "Expected values: docs/methodology/dcf.md \u00a714, recomputed by the methodology calculator (forward discount-factor sums, exact rationals / 60-digit decimals). Not produced by the reference or the engine.",
+  "doc_section": "docs/methodology/dcf.md \u00a714 B3"
+}

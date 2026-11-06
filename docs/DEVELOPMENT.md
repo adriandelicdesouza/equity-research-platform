@@ -55,6 +55,16 @@ Backend tests:
 - They create and drop only databases named `erp_test*`, using the dev superuser.
 - Each test runs inside a rolled-back transaction.
 
+## Independent reference valuation (M1)
+
+`engine/tests/reference/` is the independent DCF oracle (Blueprint §13.1.1, D26).
+- **Source:** written only from `docs/methodology/dcf.md`.
+- **Arithmetic:** exact `Fraction` throughout; `mpmath` at 50 digits for fractional exponents.
+- **Independence:** it never imports `erp_engine`, `erp_backend` or `decimal`. Two checks enforce this:
+  - the import-linter contracts in `pyproject.toml`, run by `make lint`;
+  - `engine/tests/test_reference_independence.py`.
+- **Benchmarks:** the fixtures in `engine/tests/fixtures/benchmarks/` hold the methodology document's benchmarks B1, B1-VD, B2, B3 and B4.
+
 ## Database access model
 
 | Role | Used by | Rights |

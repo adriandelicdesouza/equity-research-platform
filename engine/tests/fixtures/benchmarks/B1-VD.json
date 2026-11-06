@@ -1,0 +1,65 @@
+{
+  "id": "B1-VD",
+  "method": "fcff",
+  "convention": "end_of_period",
+  "inputs": {
+    "revenue_0": "1000",
+    "nwc_0": "100",
+    "years": [
+      {
+        "growth": "0.10",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      },
+      {
+        "growth": "0.08",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      },
+      {
+        "growth": "0.06",
+        "ebit_margin": "0.20",
+        "tax_rate": "0.25",
+        "da_pct": "0.05",
+        "capex_pct": "0.07",
+        "nwc_pct": "0.10"
+      }
+    ],
+    "wacc": "0.10",
+    "terminal": {
+      "form": "value_driver",
+      "g": "0.02",
+      "ronic": "0.10"
+    },
+    "bridge": {
+      "cash": "150",
+      "debt": "400"
+    },
+    "shares": {
+      "basic": "100",
+      "option_tranches": []
+    }
+  },
+  "expected": {
+    "tv": "2408373/1250",
+    "pv_tv": "875772/605",
+    "ev": "1092914/605",
+    "equity": "941664/605",
+    "price": "235416/15125"
+  },
+  "doc_rounded": {
+    "tv": "1926.698400",
+    "pv_tv": "1447.557025",
+    "ev": "1806.469421",
+    "equity": "1556.469421",
+    "price": "15.564694"
+  },
+  "provenance": "Expected values: docs/methodology/dcf.md \u00a714, recomputed by the methodology calculator (forward discount-factor sums, exact rationals / 60-digit decimals). Not produced by the reference or the engine.",
+  "doc_section": "docs/methodology/dcf.md \u00a714 B1-VD"
+}

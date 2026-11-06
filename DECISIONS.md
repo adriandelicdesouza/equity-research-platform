@@ -177,12 +177,13 @@ Each decision lists the choice, why, the alternative rejected, and the trade-off
 - Can't import `erp_engine` (enforced by import-linter).
 - Hand-worked benchmarks are never regenerated from engine output.
 
-### D27. Gordon terminal value discount timing (§7.4)
-- Default: end of the final period.
-- A mid-period variant is selectable and recorded.
-- Exit-multiple TV is always at end of the final period.
-- Rev 2 changed the default from mid-period to end-of-period to keep the default conservative and simple. The choice is visible on every output.
-
+### D27. Gordon terminal value discount timing (§7.4) — AMENDED 2026-11-06
+- **Current rule (owner-approved, methodology review Q1):** Gordon TV timing **follows the cash-flow convention**. Under mid-period discounting it's discounted at `t_N − ½`; under end-of-period, at `t_N`.
+  - End-of-period stays available as a recorded conservative override, shown on outputs.
+  - Exit-multiple TV is always at the end of the final period.
+- **Why amended:** under mid-period discounting the perpetuity's flows also arrive mid-period, so end-of-period TV timing was internally inconsistent. It understated EV by 3.9% in methodology benchmark B2.
+- **Superseded rule (Rev 2):** end-of-period default with a mid-period variant.
+- **Detail:** `docs/methodology/dcf.md` §6.2.
 ---
 
 ## Frontend
@@ -224,6 +225,36 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Keys:** `(client IP, username)` and `username` alone.
 - **Why:** requests arriving through cloudflared share one source address. Per-account limiting still works when IPs are indistinguishable.
 - **Scope:** in-memory, valid because the API runs one process.
+
+### D35. Default terminal FCF form: value driver (owner-approved 2026-11-06)
+- **Choice:** the Gordon TV defaults to the value-driver form, `NOPAT_{N+1} × (1 − g/RONIC) / (WACC − g)`. For FCFE it uses `ROE_new`.
+- **RONIC:** a required analyst assumption, suggested `= WACC` (growth neither creates nor destroys value) until approved.
+- **Simple growth:** stays selectable per run.
+- **Why:** keeps terminal reinvestment consistent with growth (Blueprint §7.6). The simple form carries forward the final year's reinvestment rate, which is usually inconsistent with `g`.
+- **Detail:** `docs/methodology/dcf.md` §6.1, benchmark B1-VD.
+
+## Implementation decisions during M1 (Session 3)
+
+### D36. Engine inputs are frozen dataclasses; the engine has no third-party dependencies
+- **Choice:** `erp_engine.inputs` uses frozen dataclasses with `Decimal` fields, not Pydantic.
+- **Why:** keeps the authoritative calculation package dependency-free and independent of the API layer.
+- **Validation split:** the backend (Pydantic) validates requests and maps them to these types.
+
+### D37. WACC is a separate engine API; DCF consumes explicit discount rates
+- **Choice:** `erp_engine.wacc` computes Ke and WACC with every §7 rule. `run_valuation` takes the resulting per-period rates (`discount_rates`, `cost_of_equity`).
+- **Why:** the WACC build-up and the valuation are inspected separately, and scenarios override either.
+- **Integration:** wiring the two together in one request is backend work (M3).
+
+### D38. Student-t quantile without SciPy
+- **Choice:** the 95% CI of regression beta uses the Cornish–Fisher expansion of the t quantile.
+- **Accuracy:** error below 2×10⁻⁵ for 46 or more degrees of freedom. The minimum sample sizes guarantee that range.
+- **Why:** avoids adding SciPy (about 40 MB) for one constant.
+
+### D39. FCFE with an interim balance sheet (stub) deferred
+- **What's deferred:** methodology §5.3 states the Mode B rule for FCFE. Implementing it needs fiscal-year-start debt and cash balances, which the R1 financing inputs don't carry.
+- **Current behaviour:** the engine refuses FCFE with a stub (`fcfe_stub_not_supported`) rather than approximating.
+- **FCFF:** stubs are fully supported.
+- **Plan:** revisit with the R2 debt schedule.
 
 ## Pending decisions (need your input)
 
