@@ -11,7 +11,8 @@
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
 - **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
-- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0004`, 6 SEC companies, 88,160 facts.
+- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0005` (mapping v1 loaded), 6 SEC companies, 88,160 facts.
+- **Mapping v1 committed, not pushed:** `mappings/v1/`, `erp_backend.standardization`, migration `0005`, CLI `sec-standardize-report` (D49).
 - **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
 
 ## Rules for this session (owner instructions)
@@ -38,11 +39,8 @@ Then ask the owner about the open decisions below. Only the commit question matt
 
 ## Remaining M2 work, in order (Blueprint §4–§5, §10.3, §14.1)
 
-1. **SEC concept → standard statement mapping (v1).**
-   - Versioned YAML in `mappings/` (us-gaap, ifrs-full): line-item code, ordered concept candidates, sign.
-   - `ref.standard_line_items` and `ref.concept_mappings` loaded by migration.
-   - Fallback is chosen per period (Blueprint §4.4, §5.2).
-2. **Versioned financial datasets.**
+1. ~~SEC concept → standard statement mapping (v1)~~ **done** (D49). `mappings/v1/` is frozen (hash pinned in `0005`); changes go into `v2/` with a new migration. Gaps per company: KNOWN_LIMITATIONS §4d.
+2. **Versioned financial datasets (next).** Build on `standardization.resolve` (values already carry concept, priority, sign and source fact):
    - `fin.fiscal_periods`, `fin.financial_datasets` (`selection_policy`, `facts_as_of`, `interim_coverage`, draft/locked), `fin.financial_values`.
    - Built from `ingestion.selection` (D11). Derived values are flagged (gross profit, EBITDA, Q4 = FY − 9M).
    - Rebuilding from archived facts must be byte-identical.
@@ -81,5 +79,6 @@ Then request owner review, and only after approval, the merge to `main`.
 - **SEC:**
   - enqueue: `docker exec erp-dev-api-1 python -m erp_backend.cli sec-ingest --ticker XYZ`
   - rebuild without network: `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-rebuild-from-archive`
+- **Mapping coverage:** `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-standardize-report --ticker AAPL [--all] [--as-of YYYY-MM-DD]`.
 - **Memory:** `make measure-memory LABEL="…"`. Results go in `docs/operations/memory.md`.
 - **Engine golden outputs:** after any intended calculation change, bump `erp_engine/version.py`, then run `ERP_UPDATE_GOLDEN=1 make test-engine`.

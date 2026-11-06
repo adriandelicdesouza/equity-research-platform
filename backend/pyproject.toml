@@ -19,6 +19,8 @@ dependencies = [
     "procrastinate>=2.0",
     "duckdb>=1.0",
     "zstandard>=0.22",
+    # M2 standardization: mapping YAML (already locked via uvicorn[standard]; D49)
+    "pyyaml>=6.0",
 ]
 
 [tool.uv.sources]

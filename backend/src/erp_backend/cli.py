@@ -114,6 +114,83 @@ def _sec_rebuild() -> int:
     return 0
 
 
+KEY_ITEMS = (
+    "IS.REVENUE", "IS.EBIT", "IS.NET_INCOME", "IS.EPS_DILUTED", "BS.CASH", "BS.TOTAL_ASSETS",
+    "BS.TOTAL_LIABILITIES", "BS.TOTAL_EQUITY", "CF.CFO", "CF.CAPEX", "CF.DIVIDENDS",
+)  # fmt: skip
+
+
+def _sec_standardize_report(
+    ticker: str, years: int, policy_name: str, as_of: str | None, show_all: bool
+) -> int:
+    """Read-only coverage report: stored SEC facts → mapped standard line items (no writes)."""
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from erp_backend.config import get_settings
+    from erp_backend.db import new_session
+    from erp_backend.ingestion.sec_ingest import stored_facts
+    from erp_backend.ingestion.selection import Policy
+    from erp_backend.ingestion.selection import select as select_facts
+    from erp_backend.models import Company, Security
+    from erp_backend.standardization import mapping as mapping_mod
+    from erp_backend.standardization.resolve import (
+        ValueStatus,
+        annual_coverage,
+        resolve,
+        taxonomy_for_standard,
+    )
+
+    settings = get_settings()
+    mapping = mapping_mod.load(settings.mappings_root, settings.mapping_version)
+    policy = Policy(policy_name)
+    with new_session() as db:
+        company = db.scalars(
+            select(Company)
+            .join(Security, Security.company_id == Company.id)
+            .where(Security.ticker == ticker.upper())
+        ).first()
+        if company is None:
+            print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+            return 1
+        taxonomy = taxonomy_for_standard(company.accounting_standard)
+        if taxonomy is None or company.reporting_currency is None:
+            print("error: accounting standard or reporting currency unknown", file=sys.stderr)
+            return 1
+        facts = stored_facts(db, company.id)
+    selections = select_facts(facts, date.fromisoformat(as_of) if as_of else None)
+    values = resolve(
+        selections, mapping, taxonomy=taxonomy, currency=company.reporting_currency, policy=policy
+    )
+    cov = annual_coverage(values, mapping, taxonomy, years=years)
+    print(
+        f"{company.legal_name} ({ticker.upper()}): {taxonomy}, {company.reporting_currency}, "
+        f"mapping {mapping.version}, policy {policy.value}, facts as of {as_of or 'all'}"
+    )
+    print(f"mapped line items for {taxonomy}: {len(cov.mapped)}")
+    annual = {
+        (v.line_item, v.period_end): v
+        for v in values
+        if v.period_end in cov.year_ends
+        and (mapping.line_items[v.line_item].period == "instant" or (v.duration_days or 0) > 349)
+    }
+    for end in cov.year_ends:
+        missing = cov.missing(end)
+        print(f"\nFY ending {end}: {len(cov.mapped) - len(missing)}/{len(cov.mapped)} mapped items")
+        codes = [c for c in mapping.line_items if c in cov.mapped] if show_all else KEY_ITEMS
+        for code in codes:
+            v = annual.get((code, end))
+            if v is None:
+                continue
+            shown = "AMBIGUOUS" if v.status is ValueStatus.AMBIGUOUS else f"{v.value:,}"
+            fallback = f" (fallback #{v.priority})" if v.priority > 1 else ""
+            print(f"  {code:<34} {shown:>22}  {v.concept}{fallback}")
+        if missing:
+            print(f"  missing: {', '.join(missing)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -135,6 +212,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Re-derive SEC company profiles and inferences from the raw archive "
         "and stored facts (no network).",
     )
+    std = sub.add_parser(
+        "sec-standardize-report",
+        help="Report how stored SEC facts map onto standard line items (read-only).",
+    )
+    std.add_argument("--ticker", required=True)
+    std.add_argument("--years", type=int, default=5)
+    std.add_argument(
+        "--policy", choices=["latest_reported", "first_reported"], default="latest_reported"
+    )
+    std.add_argument("--as-of", help="Only facts filed on or before this date (YYYY-MM-DD).")
+    std.add_argument("--all", action="store_true", help="Show every mapped line item.")
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -146,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         return _sec_ingest(args.ticker, args.cik)
     if args.command == "sec-rebuild-from-archive":
         return _sec_rebuild()
+    if args.command == "sec-standardize-report":
+        return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover
 
 

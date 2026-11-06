@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY backend/alembic.ini backend/alembic.ini
 COPY backend/alembic backend/alembic
+COPY mappings mappings
 ENV PATH=/app/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER erp
 EXPOSE 8000

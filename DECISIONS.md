@@ -317,6 +317,20 @@ These refine the approved architecture. None changes an approved methodology dec
   - Country falls back to the incorporation code when the business address is absent. SEC code `Z4` = Canada (federal).
   - Reporting currency uses the latest periodic filing, falling back to interim forms for 6-K-only filers such as CNI. Registration forms (F-10) are ignored.
 
+### D49. Standard line-item mapping v1: versioned YAML, frozen once loaded (§3.3, §4.4, §5.2)
+- **Files:** `mappings/v1/line_items.yaml` (81 standard line items) plus `us-gaap.yaml` and `ifrs-full.yaml` (ordered concept candidates with a sign multiplier). Loaded by migration `0005` into `ref.mapping_versions`, `ref.standard_line_items` and `ref.concept_mappings`.
+- **Immutability:** the migration pins the SHA-256 of `mappings/v1/` and refuses to run if the files changed. The `ref` tables reject UPDATE/DELETE/TRUNCATE, and the application role can only read them. A change means a new `v2/` directory and a new migration.
+- **Refinement of the blueprint DDL:** line items are keyed by `(mapping_version, code)`, and each item carries a `period_type` (duration/instant) next to `value_type`, so a version is self-contained.
+- **Sign conventions:** `natural` (income, balances), `expense` (costs stored positive), `cash_flow` (inflow +, outflow −). A candidate's `sign: -1` converts a reported positive payment into an outflow (e.g. capex).
+- **Resolution (pure, `erp_backend.standardization.resolve`):**
+  - It works per line item and per period window, using the D11 selection.
+  - The highest-priority concept with a selection in that window wins. The concept, its priority and any lower-priority alternatives are recorded.
+  - If the winner is ambiguous, no value is used and nothing falls back silently.
+  - Facts must be in the reporting currency (or `<currency>/shares`, or `shares`).
+- **Candidate lists** were checked against the stored facts of AAPL, MSFT, SHOP, CNI, CNQ and RY (CLI `sec-standardize-report`, read-only). The blueprint's revenue order was kept: where Shopify reports both concepts, the values are equal.
+- **No-NCI fallbacks:** consolidated net income and total equity come last in the candidate lists for "attributable to the parent" items (`NetIncomeLoss`/`StockholdersEquity` in us-gaap, `ProfitLoss`/`Equity` in IFRS). They are flagged as fallbacks (priority > 1) and are only correct for companies without non-controlling interests; the integrity checks (§5.3) are the safeguard.
+- **Dependency:** `pyyaml` is declared directly in `erp-backend`. It was already in the lock and the image via `uvicorn[standard]`, so no new package was installed.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Raw provider payload archive (append-only, content-addressed; Blueprint §4.1).
     raw_root: Path = Path("/data/raw")
 
+    # Versioned XBRL → standard line-item mappings (Blueprint §4.4; repository ``mappings/``,
+    # copied to /app/mappings in the image).
+    mappings_root: Path = Path("/app/mappings")
+    mapping_version: str = "v1"
+
     # SEC EDGAR: required contact User-Agent (owner-supplied; no default, D42).
     sec_user_agent: str | None = None
 

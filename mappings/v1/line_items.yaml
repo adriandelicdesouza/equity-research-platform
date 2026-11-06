@@ -1,0 +1,149 @@
+# Standard line-item taxonomy, mapping version v1 (Blueprint §3.3, §5.2).
+#
+# This file is FROZEN once migration 0005 has loaded it: the migration verifies its
+# SHA-256. Changes go into a new version directory (v2/) loaded by a new migration.
+# Codes are stable identifiers; later versions extend them and never rename them.
+#
+# Fields
+#   code            STATEMENT.NAME (statement prefix IS, BS or CF)
+#   label           display label
+#   parent          optional code this item rolls up into (display hierarchy)
+#   period          duration (flows, per-share and weighted counts) | instant (balances)
+#   value_type      flow | stock | per_share | count
+#   sign            natural        income, assets, liabilities and equity positive
+#                   expense        costs and expenses stored as positive amounts
+#                   cash_flow      cash inflow positive, outflow negative
+#   subtotal        optional signed list of child codes: the item equals their sum
+#                   (data for integrity checks, Blueprint §5.3; not a formula language)
+#   derived_only    true when no reported concept maps to it (computed, Blueprint §4.4 step 5)
+
+line_items:
+  # ---- Income statement ------------------------------------------------------------
+  - {code: IS.REVENUE, label: Revenue, period: duration, value_type: flow, sign: natural}
+  - {code: IS.COGS, label: Cost of revenue, period: duration, value_type: flow, sign: expense}
+  - code: IS.GROSS_PROFIT
+    label: Gross profit
+    period: duration
+    value_type: flow
+    sign: natural
+    subtotal: [+IS.REVENUE, -IS.COGS]
+  - code: IS.SGA
+    label: Selling, general and administrative
+    period: duration
+    value_type: flow
+    sign: expense
+    subtotal: [+IS.SELLING_MARKETING, +IS.GENERAL_ADMIN]
+  - {code: IS.SELLING_MARKETING, label: Selling and marketing, parent: IS.SGA, period: duration, value_type: flow, sign: expense}
+  - {code: IS.GENERAL_ADMIN, label: General and administrative, parent: IS.SGA, period: duration, value_type: flow, sign: expense}
+  - {code: IS.RND, label: Research and development, period: duration, value_type: flow, sign: expense}
+  - {code: IS.OTHER_OPEX, label: Other operating expenses, period: duration, value_type: flow, sign: expense}
+  - {code: IS.TOTAL_OPEX, label: Total operating expenses, period: duration, value_type: flow, sign: expense}
+  - {code: IS.DA, label: Depreciation and amortization (income statement), period: duration, value_type: flow, sign: expense}
+  - {code: IS.SBC, label: Share-based compensation expense, period: duration, value_type: flow, sign: expense}
+  - code: IS.EBITDA
+    label: EBITDA
+    period: duration
+    value_type: flow
+    sign: natural
+    subtotal: [+IS.EBIT, +CF.DA]
+    derived_only: true
+  - {code: IS.EBIT, label: Operating income (EBIT), period: duration, value_type: flow, sign: natural}
+  - {code: IS.INTEREST_EXPENSE, label: Interest expense, period: duration, value_type: flow, sign: expense}
+  - {code: IS.INTEREST_INCOME, label: Interest and investment income, period: duration, value_type: flow, sign: natural}
+  - {code: IS.OTHER_NONOPERATING, label: Non-operating income (expense), period: duration, value_type: flow, sign: natural}
+  - {code: IS.PRETAX_INCOME, label: Income before tax, period: duration, value_type: flow, sign: natural}
+  - {code: IS.INCOME_TAX, label: Income tax expense, period: duration, value_type: flow, sign: expense}
+  - code: IS.NET_INCOME
+    label: Net income (consolidated)
+    period: duration
+    value_type: flow
+    sign: natural
+    subtotal: [+IS.NET_INCOME_COMMON, +IS.NCI_SHARE]
+  - {code: IS.NCI_SHARE, label: Net income attributable to non-controlling interests, parent: IS.NET_INCOME, period: duration, value_type: flow, sign: natural}
+  - {code: IS.NET_INCOME_COMMON, label: Net income attributable to the parent, parent: IS.NET_INCOME, period: duration, value_type: flow, sign: natural}
+  - {code: IS.EPS_BASIC, label: EPS basic, period: duration, value_type: per_share, sign: natural}
+  - {code: IS.EPS_DILUTED, label: EPS diluted, period: duration, value_type: per_share, sign: natural}
+  - {code: IS.SHARES_BASIC_WA, label: Weighted-average shares basic, period: duration, value_type: count, sign: natural}
+  - {code: IS.SHARES_DILUTED_WA, label: Weighted-average shares diluted, period: duration, value_type: count, sign: natural}
+  # Leases (Blueprint §5.2, §7.7)
+  - {code: IS.OPERATING_LEASE_COST, label: Operating lease cost (ASC 842), period: duration, value_type: flow, sign: expense}
+  - {code: IS.ROU_DEPRECIATION, label: Right-of-use asset depreciation, period: duration, value_type: flow, sign: expense}
+  - {code: IS.LEASE_INTEREST, label: Interest on lease liabilities, period: duration, value_type: flow, sign: expense}
+  - {code: IS.VARIABLE_LEASE_COST, label: Variable lease expense, period: duration, value_type: flow, sign: expense}
+  - {code: IS.SHORT_TERM_LEASE_COST, label: Short-term lease expense, period: duration, value_type: flow, sign: expense}
+
+  # ---- Balance sheet ---------------------------------------------------------------
+  - {code: BS.CASH, label: Cash and cash equivalents, period: instant, value_type: stock, sign: natural}
+  - {code: BS.ST_INVESTMENTS, label: Short-term investments, period: instant, value_type: stock, sign: natural}
+  - {code: BS.RECEIVABLES, label: Receivables, period: instant, value_type: stock, sign: natural}
+  - {code: BS.INVENTORY, label: Inventory, period: instant, value_type: stock, sign: natural}
+  - {code: BS.OTHER_CURRENT_ASSETS, label: Other current assets, period: instant, value_type: stock, sign: natural}
+  - {code: BS.TOTAL_CURRENT_ASSETS, label: Total current assets, period: instant, value_type: stock, sign: natural}
+  - {code: BS.PPE_NET, label: "Property, plant and equipment, net", period: instant, value_type: stock, sign: natural}
+  - {code: BS.ROU_ASSETS, label: Right-of-use assets, period: instant, value_type: stock, sign: natural}
+  - {code: BS.GOODWILL, label: Goodwill, period: instant, value_type: stock, sign: natural}
+  - {code: BS.INTANGIBLES, label: Intangible assets excluding goodwill, period: instant, value_type: stock, sign: natural}
+  - {code: BS.OTHER_NONCURRENT_ASSETS, label: Other non-current assets, period: instant, value_type: stock, sign: natural}
+  - {code: BS.TOTAL_ASSETS, label: Total assets, period: instant, value_type: stock, sign: natural}
+  - {code: BS.PAYABLES, label: Accounts payable, period: instant, value_type: stock, sign: natural}
+  - {code: BS.ACCRUED_LIABILITIES, label: Accrued liabilities, period: instant, value_type: stock, sign: natural}
+  - code: BS.ST_DEBT
+    label: Short-term debt and current portion of long-term debt
+    period: instant
+    value_type: stock
+    sign: natural
+    subtotal: [+BS.SHORT_TERM_BORROWINGS, +BS.CURRENT_LTD]
+  - {code: BS.SHORT_TERM_BORROWINGS, label: Short-term borrowings, parent: BS.ST_DEBT, period: instant, value_type: stock, sign: natural}
+  - {code: BS.CURRENT_LTD, label: Current portion of long-term debt, parent: BS.ST_DEBT, period: instant, value_type: stock, sign: natural}
+  - {code: BS.OTHER_CURRENT_LIABILITIES, label: Other current liabilities, period: instant, value_type: stock, sign: natural}
+  - {code: BS.TOTAL_CURRENT_LIABILITIES, label: Total current liabilities, period: instant, value_type: stock, sign: natural}
+  - {code: BS.LT_DEBT, label: Long-term debt, period: instant, value_type: stock, sign: natural}
+  - {code: BS.DEFERRED_TAX_LIABILITIES, label: Deferred tax liabilities, period: instant, value_type: stock, sign: natural}
+  - {code: BS.OTHER_NONCURRENT_LIABILITIES, label: Other non-current liabilities, period: instant, value_type: stock, sign: natural}
+  - {code: BS.TOTAL_LIABILITIES, label: Total liabilities, period: instant, value_type: stock, sign: natural}
+  - {code: BS.PREFERRED_EQUITY, label: Preferred equity, period: instant, value_type: stock, sign: natural}
+  - {code: BS.COMMON_EQUITY, label: Equity attributable to the parent, period: instant, value_type: stock, sign: natural}
+  - {code: BS.NCI, label: Non-controlling interests, period: instant, value_type: stock, sign: natural}
+  - code: BS.TOTAL_EQUITY
+    label: Total equity
+    period: instant
+    value_type: stock
+    sign: natural
+    subtotal: [+BS.COMMON_EQUITY, +BS.NCI]
+  - code: BS.TOTAL_LIABILITIES_EQUITY
+    label: Total liabilities and equity
+    period: instant
+    value_type: stock
+    sign: natural
+    subtotal: [+BS.TOTAL_LIABILITIES, +BS.TOTAL_EQUITY]
+  - {code: BS.SHARES_OUTSTANDING, label: Common shares outstanding (balance-sheet date), period: instant, value_type: count, sign: natural}
+  # Leases: ASC 842 splits operating and finance; IFRS 16 reports a single lease liability.
+  - {code: BS.OPERATING_LEASE_LIAB_CURRENT, label: Operating lease liabilities current (ASC 842), period: instant, value_type: stock, sign: natural}
+  - {code: BS.OPERATING_LEASE_LIAB_NONCURRENT, label: Operating lease liabilities non-current (ASC 842), period: instant, value_type: stock, sign: natural}
+  - {code: BS.FINANCE_LEASE_LIAB_CURRENT, label: Finance lease liabilities current (ASC 842), period: instant, value_type: stock, sign: natural}
+  - {code: BS.FINANCE_LEASE_LIAB_NONCURRENT, label: Finance lease liabilities non-current (ASC 842), period: instant, value_type: stock, sign: natural}
+  - {code: BS.LEASE_LIAB_CURRENT, label: Lease liabilities current (IFRS 16), period: instant, value_type: stock, sign: natural}
+  - {code: BS.LEASE_LIAB_NONCURRENT, label: Lease liabilities non-current (IFRS 16), period: instant, value_type: stock, sign: natural}
+
+  # ---- Cash flow statement ---------------------------------------------------------
+  - {code: CF.NET_INCOME, label: Net income (cash flow starting line), period: duration, value_type: flow, sign: natural}
+  - {code: CF.DA, label: Depreciation and amortization (cash flow), period: duration, value_type: flow, sign: natural}
+  - {code: CF.SBC, label: Share-based compensation (cash flow add-back), period: duration, value_type: flow, sign: natural}
+  - {code: CF.CHANGE_WORKING_CAPITAL, label: Change in operating working capital, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.CFO, label: Cash flow from operating activities, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.CAPEX, label: Capital expenditures, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.ACQUISITIONS, label: Acquisitions net of cash acquired, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.CFI, label: Cash flow from investing activities, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.DEBT_ISSUED, label: Debt issued, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.DEBT_REPAID, label: Debt repaid, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.BUYBACKS, label: Share repurchases, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.DIVIDENDS, label: Dividends paid, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.LEASE_PRINCIPAL, label: Lease principal payments (financing), period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.CFF, label: Cash flow from financing activities, period: duration, value_type: flow, sign: cash_flow}
+  - {code: CF.FX_EFFECT, label: Effect of exchange rates on cash, period: duration, value_type: flow, sign: cash_flow}
+  - code: CF.NET_CHANGE_CASH
+    label: Net change in cash
+    period: duration
+    value_type: flow
+    sign: cash_flow
+    subtotal: [+CF.CFO, +CF.CFI, +CF.CFF, +CF.FX_EFFECT]

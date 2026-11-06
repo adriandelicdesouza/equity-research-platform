@@ -114,7 +114,16 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
 - **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
 - **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
-- **Not built yet:** standardization mapping (concept → line item), dataset versions, integrity checks and the classifier. These are the next M2 steps.
+- **Not built yet:** dataset versions (fiscal-period labels, persistence), derivations, integrity checks and the classifier. These are the next M2 steps. Concept mapping v1 exists (D49).
+
+## 4d. Standardization mapping v1 (M2)
+
+- **Extension concepts:** SEC companyfacts holds only standard-taxonomy facts. Company-specific concepts never appear, so items a company tags with its own concepts stay missing. Example: CNQ capex has no `ifrs-full` capex fact. Such gaps need manual entry or import.
+- **Items a company does not present** stay missing rather than being approximated. Examples: CNQ and RY have no operating-income line; MSFT reports S&M and G&A but no combined SG&A, and no combined cash-flow D&A; SHOP has no total-liabilities tag. Sums and differences are derivations (Blueprint §4.4 step 5), not built yet.
+- **IFRS long-term debt:** `LongtermBorrowings` includes the current portion, so it is not mapped to `BS.LT_DEBT`. The non-current amount is a later derivation.
+- **No-NCI fallbacks** (D49) assume no non-controlling interests when the "attributable to parent" concept is absent.
+- **Banks and insurers:** the v1 taxonomy is industrial. RY maps only about half of the items (no current/non-current split, no COGS or EBIT), as expected for a financial (D24 classification blocks DCF).
+- **Cover-page shares** (`dei:EntityCommonStockSharesOutstanding`) are not mapped. `BS.SHARES_OUTSTANDING` uses the balance-sheet tag; point-in-time share data comes with `fin.share_counts` (§7.7).
 
 ## 5. Unresolved items
 

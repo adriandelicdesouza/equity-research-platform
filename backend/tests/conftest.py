@@ -29,6 +29,7 @@ os.environ.update(
         "ERP_DB_OWNER_PASSWORD_FILE": str(SECRETS / "db_owner_password"),
         "ERP_ALLOWED_ORIGINS": "https://testserver",
         "ERP_LOGIN_MAX_ATTEMPTS": "3",
+        "ERP_MAPPINGS_ROOT": str(REPO / "mappings"),
     }
 )
 

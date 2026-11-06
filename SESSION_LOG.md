@@ -355,3 +355,18 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
 - **Before the push:** an MIT `LICENSE` (GitHub detects it as MIT) and README sections for the AI disclosure, license and testing were added to both `main` (`9ef5594`) and `m2-ingestion` (`51cd1fa`). The `main` README describes only M0 and M1.
 - **`make check`** passed on `m2-ingestion` (engine 109, backend 111, frontend 2 tests).
 - **No merge, force-push or history rewrite.** `main` and `m2-ingestion` each have a separate README commit, so the future merge will conflict on `README.md`: keep the `m2-ingestion` version.
+
+### Session 3, continued — M2 standardization mapping v1 (2026-11-06)
+
+- **Task:** the first remaining M2 item (NEXT_SESSION #1). Datasets, integrity checks, conflicts and classification all work on standard line items.
+- **Built:**
+  - `mappings/v1/`: 81 line items, plus 226 us-gaap and ifrs-full candidates.
+  - `erp_backend.standardization`:
+    - `mapping.py`: loader, validation and fingerprint;
+    - `resolve.py`: per-period resolution and annual coverage.
+  - Migration `0005`: the `ref` schema, immutable, with the v1 hash pinned.
+  - CLI `sec-standardize-report`.
+  - Settings `ERP_MAPPINGS_ROOT` and `ERP_MAPPING_VERSION`; the image copies `mappings/`.
+  - Decision D49; limitations in KNOWN_LIMITATIONS §4d.
+- **Checked against stored real facts:** the key values for AAPL, MSFT, SHOP, CNI, CNQ and RY match the published figures. Annual coverage per year: AAPL 60–61/78, MSFT 60–61/78, CNI 60/78, SHOP 53–54/78, CNQ 52/72, RY 38/72 (bank). The candidate lists gained the MSFT debt-flow concepts and the IFRS no-NCI fallbacks.
+- **Tests:** 41 new (backend 111 → 152). `make check` passes. Dev DB migrated `0004 → 0005` by the migrate container. No network requests.
