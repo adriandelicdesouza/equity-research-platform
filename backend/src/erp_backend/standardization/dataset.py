@@ -25,14 +25,18 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 from erp_backend.ingestion import coverage
 from erp_backend.ingestion.sec_parse import RawFact
-from erp_backend.ingestion.selection import Policy, select
+from erp_backend.ingestion.selection import FactKey, Policy, fact_key, select
+from erp_backend.standardization.conflicts import Conflict, Resolution
+from erp_backend.standardization.conflicts import apply as apply_resolutions
+from erp_backend.standardization.conflicts import detect as detect_conflicts
+from erp_backend.standardization.conflicts import summarize as summarize_conflicts
 from erp_backend.standardization.dataset_types import DatasetValue, decimal_str
 
 __all__ = ["DatasetValue", "decimal_str"]  # re-exported for callers of this module
@@ -48,7 +52,7 @@ from erp_backend.standardization.resolve import StandardValue, resolve
 from erp_backend.standardization.validation import CheckResult, summarize, validate
 from erp_backend.standardization.validation import sha256 as validation_sha256
 
-FORMAT_VERSION = 2  # 2: YTD quarters, formulas and LTM (D51)
+FORMAT_VERSION = 3  # 2: YTD quarters, formulas and LTM (D51); 3: conflicts (D52)
 ANNUAL_REPORT_FORMS = frozenset({"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"})
 DATASET_FORMS = ANNUAL_REPORT_FORMS | coverage.INTERIM_FORMS
 # Which period a balance-sheet date attaches to when several end on it: FY first.
@@ -71,9 +75,14 @@ class DatasetHeader:
     # The serialization format the dataset was built with; stored rows of an older
     # version must re-serialize with their own format, not the code's current one.
     format_version: int = FORMAT_VERSION
+    # Highest conflict-resolution id considered by the build (format 3+; D52).
+    resolution_cutoff_id: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        extra = (
+            {"resolution_cutoff_id": self.resolution_cutoff_id} if self.format_version >= 3 else {}
+        )
+        return extra | {
             "format": self.format_version,
             "mapping_version": self.mapping_version,
             "mapping_sha256": self.mapping_sha256,
@@ -86,13 +95,18 @@ class DatasetHeader:
 
 
 def canonical_bytes(
-    header: DatasetHeader, periods: list[FiscalPeriod], values: list[DatasetValue]
+    header: DatasetHeader,
+    periods: list[FiscalPeriod],
+    values: list[DatasetValue],
+    conflicts: Iterable[Conflict] = (),
 ) -> bytes:
-    doc = {
+    doc: dict[str, Any] = {
         "header": header.as_dict(),
         "periods": [p.as_dict() for p in sorted(periods, key=FiscalPeriod.sort_key)],
         "values": [v.as_dict() for v in sorted(values, key=DatasetValue.sort_key)],
     }
+    if header.format_version >= 3:
+        doc["conflicts"] = [c.as_dict() for c in sorted(conflicts, key=Conflict.sort_key)]
     return json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
@@ -117,6 +131,7 @@ class BuiltDataset:
     interim_coverage: str
     summary: Mapping[str, Any]
     checks: tuple[CheckResult, ...] = ()
+    conflicts: tuple[Conflict, ...] = ()
 
     @property
     def validation_sha256(self) -> str:
@@ -124,7 +139,7 @@ class BuiltDataset:
 
     @property
     def canonical(self) -> bytes:
-        return canonical_bytes(self.header, list(self.periods), list(self.values))
+        return canonical_bytes(self.header, list(self.periods), list(self.values), self.conflicts)
 
     @property
     def content_sha256(self) -> str:
@@ -168,8 +183,14 @@ def build(
     currency: str,
     policy: Policy = Policy.LATEST_REPORTED,
     facts_as_of: date | None = None,
+    resolutions: Mapping[str, Resolution] | None = None,
+    resolution_cutoff_id: int | None = None,
 ) -> BuiltDataset:
-    """Build a dataset from facts (each mapped to its stored id). Pure and deterministic."""
+    """Build a dataset from facts (each mapped to its stored id). Pure and deterministic.
+
+    ``resolutions`` (latest per conflict key, ids ≤ ``resolution_cutoff_id``) are applied
+    to the detected conflicts before derivations and integrity checks (D52).
+    """
     periodic = {
         f: i for f, i in facts.items() if f.form.upper() in DATASET_FORMS and f.taxonomy == taxonomy
     }
@@ -188,10 +209,10 @@ def build(
         policy.value,
         facts_as_of,
         input_sha256(eligible),
+        resolution_cutoff_id=resolution_cutoff_id,
     )
-    resolved = resolve(
-        select(eligible, facts_as_of), mapping, taxonomy=taxonomy, currency=currency, policy=policy
-    )
+    selections = select(eligible, facts_as_of)
+    resolved = resolve(selections, mapping, taxonomy=taxonomy, currency=currency, policy=policy)
 
     weights: Counter[Window] = Counter()
     for v in resolved:
@@ -217,6 +238,15 @@ def build(
             continue
         values.append(_reported(v, target, facts))
 
+    facts_by_key: dict[FactKey, list[RawFact]] = defaultdict(list)
+    for f in eligible:
+        facts_by_key[fact_key(f)].append(f)
+    detected = detect_conflicts(
+        values, taxonomy=taxonomy, selections=selections, facts_by_key=facts_by_key,
+        fact_ids=eligible, mapping=mapping, policy=policy,
+    )  # fmt: skip
+    values, conflicts = apply_resolutions(values, detected, resolutions or {})
+
     derived, by_rule, skipped = derive(values, calendar.years, mapping)
     values.extend(derived)
     values.sort(key=DatasetValue.sort_key)
@@ -233,6 +263,7 @@ def build(
         "values": len(values),
         "values_ambiguous": sum(1 for v in values if v.status == "ambiguous"),
         "values_derived": len(derived),
+        "values_analyst": sum(1 for v in values if v.provenance == "analyst"),
         "values_restated": sum(1 for v in values if v.detail.get("restated")),
         "periods": dict(sorted(per_type.items())),
         "fiscal_years": [p.fiscal_year for p in calendar.years],
@@ -242,10 +273,13 @@ def build(
         "derived_by_rule": dict(sorted(by_rule.items())),
         "not_derived": dict(sorted(skipped.items())),
     }
+    summary["conflicts"] = summarize_conflicts(conflicts)
     checks = validate(values, mapping, currency)
     summary["validation"] = summarize(checks)
     level = coverage.detect(list(eligible)).level
-    return BuiltDataset(header, tuple(periods), tuple(values), level, summary, tuple(checks))
+    return BuiltDataset(
+        header, tuple(periods), tuple(values), level, summary, tuple(checks), tuple(conflicts)
+    )
 
 
 def value_key(v: DatasetValue) -> tuple[str, str, str, str]:

@@ -114,7 +114,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
 - **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
 - **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
-- **Not built yet:** conflict records and their resolution, and the classifier. These are the next M2 steps. Mapping (D49), versioned datasets (D50), integrity checks and derivations (D51) exist.
+- **Not built yet:** the classifier (next M2 step). Mapping (D49), versioned datasets (D50), integrity checks and derivations (D51) and data conflicts (D52) exist.
 
 ## 4d. Standardization mapping v1 (M2)
 
@@ -146,7 +146,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
   - **Stock splits (AAPL):** latest-reported EPS is restated for the 2014 7:1 and 2020 4:1 splits, while the weighted share counts from the original filings are not. EPS × shares then misses net income by the split factor.
   - **Concept definitions:** Apple's IS `DepreciationAndAmortization` is smaller than its CF D&A concept.
   - **Restricted cash:** the cash-flow statement includes it and the balance sheet line doesn't (warning).
-  - **Mixed filing vintages:** latest-reported selection works per fact. When a later filing restates some balance-sheet lines but not others, the selected values come from different vintages and don't tie. Examples: MSFT FY2016–Q3 FY2017 assets and equity were restated but liabilities weren't (balance off by about $11–14B); RY 2023 Q1–Q3 equity against equity + NCI is off by about C$2.4B. Consistent vintages need the conflict workflow (§10.3) or a first-reported dataset.
+  - **Mixed filing vintages** (MSFT FY2016–FY2017 equity, RY 2023 equity, AAPL FY2008–2009): now detected as `mixed_vintage` conflicts that block locking until resolved or overridden (D52, §4g).
   - **EPS numerator with preferred shares (RY):** EPS uses net income after preferred dividends, but `IS.NET_INCOME_COMMON` is "attributable to the parent", which includes preferred holders. EPS checks fail by the preferred dividends. A dedicated "available to common" line item needs mapping v3.
 
   Split-adjusting share counts needs corporate actions, which arrive with the Yahoo provider.
@@ -154,6 +154,17 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Derived values** are not re-checked against reported totals. Quarterly flows (Q2/Q3/Q4) are consistent with their year-to-date inputs by construction.
 - **Not derived:** net debt, interest-bearing debt totals, total liabilities from L&E − equity, and quarterly balance-sheet items for Q4 (it equals the FY balance sheet). LTM exists only at Q1/H1/9M ends with the same concept in all three inputs.
 - **Free cash flow** is the simple CFO + capex (`CF.FCF`, mapping v2), not FCFF/FCFE (computed by the engine from forecasts).
+
+## 4g. Data conflicts (M2)
+
+- **Single provider:** with SEC only, conflicts come from within-filing ambiguity and mixed filing vintages. Provider-vs-provider and import-vs-provider conflicts (§10.3) start when the Yahoo provider or the Excel import supplies overlapping values.
+- **Mixed-vintage scope:** detection follows the accounting identities used by the checks (balance sheet, subtotals, cash roll-forward, IS/CF net income). A restated item outside these relationships is flagged only as `restated` on the value.
+- **Candidates:** first- and latest-reported only. Intermediate filings are not offered; an analyst can enter their value with a source.
+- **Resolving one item may move the gap:** selecting the original vintage for equity fixes the balance sheet but can break equity against parent equity + NCI if those were restated. The checks re-run on every build, so this stays visible.
+- **No UI or API yet:** resolution is CLI or service only, and actors are recorded only when a user id is passed (the CLI passes none).
+- **Thresholds** are constants in `conflicts.py`, not yet configurable per installation.
+- **Reporting precision** in the check tolerance (D51) is inferred from trailing zeros; perfectly round values (rare in filings) widen it.
+- **Dev data:** one demonstration resolution exists for MSFT FY2016 equity, using the first-reported value because liabilities + original equity = reported assets exactly. Every other conflict is open; nothing is locked.
 
 ## 5. Unresolved items
 

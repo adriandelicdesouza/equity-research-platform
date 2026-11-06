@@ -4,6 +4,8 @@ from erp_backend.models.audit import AuditEvent
 from erp_backend.models.auth import Role, User, UserRole, UserSession
 from erp_backend.models.base import Base
 from erp_backend.models.fin import (
+    ConflictResolution,
+    DataConflict,
     FinancialDataset,
     FinancialValue,
     FiscalPeriodRow,
@@ -23,6 +25,8 @@ __all__ = [
     "Base",
     "Company",
     "CompanyIdentifier",
+    "ConflictResolution",
+    "DataConflict",
     "Filing",
     "FinancialDataset",
     "FinancialValue",

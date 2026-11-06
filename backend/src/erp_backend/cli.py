@@ -306,6 +306,114 @@ def _dataset_action(action: str, dataset_id: str, reason: str | None) -> int:
     return 0
 
 
+def _conflict_list(dataset_id: str, show_all: bool) -> int:
+    import uuid
+
+    from sqlalchemy import select
+
+    from erp_backend.db import new_session
+    from erp_backend.models import DataConflict, FiscalPeriodRow
+
+    with new_session() as db:
+        rows = db.execute(
+            select(DataConflict, FiscalPeriodRow)
+            .join(FiscalPeriodRow, FiscalPeriodRow.id == DataConflict.period_id)
+            .where(DataConflict.dataset_id == uuid.UUID(dataset_id))
+            .order_by(FiscalPeriodRow.end_date, DataConflict.line_item_code)
+        ).all()
+        for c, p in rows:
+            if not show_all and c.status == "auto_resolved_immaterial":
+                continue
+            cands = "; ".join(
+                f"fact {x['fact_id']} {x['role']} {x['value']} ({x['form']} {x['accession']} "
+                f"filed {x['filed']})"
+                for x in c.candidates
+            )
+            print(
+                f"{c.conflict_key} {c.status:<24} {c.kind:<13} {c.line_item_code:<22} "
+                f"{p.period_type} {p.end_date} material={c.is_material} "
+                f"diff={c.absolute_difference} ({c.relative_difference}) threshold={c.threshold}"
+                f"\n    candidates: {cands}"
+            )
+        print(f"{len(rows)} conflict(s) in dataset {dataset_id}")
+    return 0
+
+
+def _conflict_resolve(args: argparse.Namespace) -> int:
+    import uuid
+    from decimal import Decimal, InvalidOperation
+
+    from erp_backend.config import get_settings
+    from erp_backend.datasets import DatasetError, rebuild_draft, resolve_conflict
+    from erp_backend.db import new_session
+    from erp_backend.models import Company, FinancialDataset
+
+    settings = get_settings()
+    action = (
+        "select_candidate" if args.select is not None
+        else "enter_value" if args.value is not None
+        else "override" if args.override
+        else "revoke"
+    )  # fmt: skip
+    try:
+        value = Decimal(args.value) if args.value is not None else None
+    except InvalidOperation:
+        print(f"error: invalid value {args.value!r}", file=sys.stderr)
+        return 2
+    with new_session() as db:
+        try:
+            dataset = db.get(FinancialDataset, uuid.UUID(args.id))
+            if dataset is None:
+                raise DatasetError(f"No dataset {args.id}")
+            resolution = resolve_conflict(
+                db, dataset.id, args.key, action, reason=args.reason,
+                candidate_fact_id=args.select, value=value, source_reference=args.source,
+            )  # fmt: skip
+            print(f"recorded resolution {resolution.id}: {action} on {args.key}")
+            if not args.no_rebuild:
+                company = db.get(Company, dataset.company_id)
+                assert company is not None
+                result = rebuild_draft(
+                    db, company, mappings_root=settings.mappings_root,
+                    mapping_version=dataset.mapping_version,
+                    reason=f"superseded: conflict resolution {resolution.id} applied",
+                )  # fmt: skip
+                d = result.dataset
+                print(
+                    f"new draft v{d.version_no} {d.id}: conflicts {d.source_summary['conflicts']}"
+                )
+            db.commit()
+        except DatasetError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+    return 0
+
+
+def _dataset_rebuild(ticker: str, reason: str) -> int:
+    from erp_backend.config import get_settings
+    from erp_backend.datasets import DatasetError, rebuild_draft
+    from erp_backend.db import new_session
+
+    settings = get_settings()
+    with new_session() as db:
+        company = _company_by_ticker(db, ticker)
+        if company is None:
+            print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+            return 1
+        try:
+            result = rebuild_draft(
+                db, company, mappings_root=settings.mappings_root,
+                mapping_version=settings.mapping_version, reason=reason,
+            )  # fmt: skip
+        except DatasetError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+        d = result.dataset
+        print(f"{company.legal_name}: draft v{d.version_no} {d.id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -357,6 +465,26 @@ def main(argv: list[str] | None = None) -> int:
         act.add_argument("--id", required=True)
         if name != "dataset-verify":
             act.add_argument("--reason", required=True)
+    cl = sub.add_parser("conflict-list", help="List data conflicts of a dataset.")
+    cl.add_argument("--id", required=True, help="dataset id")
+    cl.add_argument("--all", action="store_true", help="Include auto-resolved immaterial ones.")
+    cr = sub.add_parser(
+        "conflict-resolve",
+        help="Record an analyst decision on a conflict and rebuild the company's draft.",
+    )
+    cr.add_argument("--id", required=True, help="dataset id where the conflict was detected")
+    cr.add_argument("--key", required=True, help="conflict key (see conflict-list)")
+    how = cr.add_mutually_exclusive_group(required=True)
+    how.add_argument("--select", type=int, help="candidate fact id to use")
+    how.add_argument("--value", help="analyst value (requires --source)")
+    how.add_argument("--override", action="store_true", help="keep the policy value")
+    how.add_argument("--revoke", action="store_true", help="revoke the active resolution")
+    cr.add_argument("--source", help="source reference for --value")
+    cr.add_argument("--reason", required=True)
+    cr.add_argument("--no-rebuild", action="store_true")
+    rb = sub.add_parser("dataset-rebuild", help="Discard the open draft and build a new one.")
+    rb.add_argument("--ticker", required=True)
+    rb.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -375,6 +503,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("dataset-verify", "dataset-lock", "dataset-discard"):
         action = args.command.split("-", 1)[1]
         return _dataset_action(action, args.id, getattr(args, "reason", None))
+    if args.command == "conflict-list":
+        return _conflict_list(args.id, args.all)
+    if args.command == "conflict-resolve":
+        return _conflict_resolve(args)
+    if args.command == "dataset-rebuild":
+        return _dataset_rebuild(args.ticker, args.reason)
     if args.command == "sec-standardize-report":
         return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover

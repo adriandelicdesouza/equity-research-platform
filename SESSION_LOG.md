@@ -411,3 +411,19 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
 
   The failures were inspected and are real data issues (KNOWN_LIMITATIONS §4f): AAPL stock-split EPS and D&A concept definitions, MSFT/RY mixed filing vintages, and the RY EPS numerator with preferred shares.
 - **Tests:** 31 new (backend 195 → 226). `make check` passes. Dev stack stopped. No network requests.
+
+### Session 3, continued — M2 data conflicts (2026-11-06)
+
+- **Task:** NEXT_SESSION item 4 (Blueprint §10.3, D13).
+- **Built:**
+  - pure detection, materiality and resolution application (`standardization/conflicts.py`), with dataset format 3: conflicts in the canonical bytes;
+  - migration `0008`: `fin.data_conflicts` (draft-insert-only, kept after discard), `fin.conflict_resolutions` (append-only, reason enforced), `resolution_cutoff_id`, `analyst` provenance, and a lock trigger that refuses open material conflicts;
+  - service: `resolve_conflict`, `rebuild_draft`; lock and verify integration;
+  - CLI: `conflict-list`, `conflict-resolve`, `dataset-rebuild`; decision D52; KNOWN_LIMITATIONS §4g.
+- **Bug found and fixed during testing:** `verify_dataset` re-serialized the stored rows without their conflicts. Caught by the new DB tests before any real data was involved.
+- **Dev DB** (migrated `0007 → 0008`, drafts rebuilt as format 3):
+  - **Open material conflicts:** MSFT 7 (FY2016–FY2017 equity restated 13–17% while liabilities stayed on the older vintage, plus Q2/Q3 FY2017 gross profit); RY 5 (2023 equity, about 2.2%; FY2017 at 0.86%); AAPL 6 (FY2008–2009 retrospective restatement).
+  - **Immaterial only:** SHOP 4, CNI 2. CNQ has none.
+  - **Locking:** refused for MSFT and RY.
+  - **Demonstration resolution 1** (MSFT FY2016 equity → first-reported 71,997M; reason documented): draft v4 built. Its FY2016 balance check passes with a difference of 0 (previously a $11.1B failure). The v3 conflict history and the audit trail are kept. Nothing locked.
+- **Tests:** 29 new (backend 226 → 255). `make check` passes. Dev stack stopped. No network requests.

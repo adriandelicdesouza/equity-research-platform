@@ -27,13 +27,13 @@ The project is under active development. **Implemented and tested:**
   - Company profiles, filings and XBRL facts, with archive-first storage of raw payloads.
   - Deterministic first-reported / latest-reported fact selection.
   - Restatement detection and interim-data coverage detection.
-- **Versioned financial datasets**: company-specific fiscal periods (52/53-week years, quarters, H1/9M), standardized values with full provenance, derived quarters (incl. quarterly cash flows), gross profit, EBITDA, free cash flow and LTM values, accounting integrity checks on every build (balance, subtotals, cash roll-forward, cross-statement, shares/EPS, completeness), draft → locked lifecycle enforced in the database, and byte-identical rebuild verification.
+- **Versioned financial datasets**: company-specific fiscal periods (52/53-week years, quarters, H1/9M), standardized values with full provenance, derived quarters (incl. quarterly cash flows), gross profit, EBITDA, free cash flow and LTM values, accounting integrity checks on every build (balance, subtotals, cash roll-forward, cross-statement, shares/EPS, completeness), data-conflict detection with materiality thresholds and an audited resolve/override workflow that must be completed before locking, draft → locked lifecycle enforced in the database, and byte-identical rebuild verification.
 - **Standardization mapping (v1)**: versioned YAML (`mappings/`) mapping US GAAP and IFRS concepts onto 81 standard line items, with per-period concept fallback, sign normalization and a read-only coverage report (`sec-standardize-report`).
 - **Frontend (`frontend/`)**: React/TypeScript shell with authentication.
 
 **Not yet available:**
 - The valuation engine isn't yet exposed through the API or user interface.
-- Conflict resolution, financial-business classification, other data providers, company workspaces, scenarios and sensitivity UI.
+- Financial-business classification, other data providers, company workspaces, scenarios and sensitivity UI.
 
 ## Roadmap
 

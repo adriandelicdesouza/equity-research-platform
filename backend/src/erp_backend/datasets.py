@@ -23,7 +23,9 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -33,12 +35,15 @@ from erp_backend.ingestion.sec_parse import RawFact
 from erp_backend.ingestion.selection import Policy
 from erp_backend.models import (
     Company,
+    ConflictResolution,
+    DataConflict,
     FinancialDataset,
     FinancialValue,
     FiscalPeriodRow,
     ReportedFact,
     ValidationResult,
 )
+from erp_backend.standardization import conflicts as conflicts_mod
 from erp_backend.standardization import dataset as ds
 from erp_backend.standardization import mapping as mapping_mod
 from erp_backend.standardization import validation as checks_mod
@@ -78,6 +83,7 @@ def _build(
     mapping: mapping_mod.MappingSet,
     policy: Policy,
     facts_as_of: date | None,
+    resolution_cutoff_id: int | None,
 ) -> ds.BuiltDataset:
     taxonomy, currency = _company_inputs(company)
     try:
@@ -88,6 +94,8 @@ def _build(
             currency=currency,
             policy=policy,
             facts_as_of=facts_as_of,
+            resolutions=resolutions_for(db, company.id, resolution_cutoff_id),
+            resolution_cutoff_id=resolution_cutoff_id,
         )
     except ds.DatasetBuildError as exc:
         raise DatasetError(f"{company.legal_name}: {exc}") from exc
@@ -126,6 +134,104 @@ def _period_rows(
     return out
 
 
+def resolutions_for(
+    db: Session, company_id: uuid.UUID, cutoff: int | None
+) -> dict[str, conflicts_mod.Resolution]:
+    """Latest resolution per conflict key with id ≤ cutoff (none when cutoff is None)."""
+    if cutoff is None:
+        return {}
+    rows = db.scalars(
+        select(ConflictResolution)
+        .where(ConflictResolution.company_id == company_id, ConflictResolution.id <= cutoff)
+        .order_by(ConflictResolution.id)
+    ).all()
+    return {
+        r.conflict_key: conflicts_mod.Resolution(
+            r.id, r.conflict_key, r.action, r.candidate_fact_id, r.value, r.source_reference
+        )
+        for r in rows
+    }
+
+
+def _candidate(d: dict[str, Any]) -> conflicts_mod.Candidate:
+    return conflicts_mod.Candidate(
+        d["fact_id"], d["accession"], d["form"], date.fromisoformat(d["filed"]), d["concept"],
+        Decimal(d["value"]), d["role"],
+    )  # fmt: skip
+
+
+def stored_conflicts(db: Session, dataset: FinancialDataset) -> list[conflicts_mod.Conflict]:
+    rows = db.execute(
+        select(DataConflict, FiscalPeriodRow, ConflictResolution)
+        .join(FiscalPeriodRow, FiscalPeriodRow.id == DataConflict.period_id)
+        .outerjoin(ConflictResolution, ConflictResolution.id == DataConflict.resolution_id)
+        .where(DataConflict.dataset_id == dataset.id)
+    ).all()
+    return [
+        conflicts_mod.Conflict(
+            key=c.conflict_key,
+            kind=c.kind,
+            line_item=c.line_item_code,
+            period=FiscalPeriod(p.fiscal_year, p.period_type, p.start_date, p.end_date),
+            candidates=tuple(_candidate(d) for d in c.candidates),
+            policy_fact_id=c.policy_fact_id,
+            materiality=conflicts_mod.Materiality(
+                c.is_material,
+                c.absolute_difference,
+                c.relative_difference,
+                c.threshold,
+                c.materiality_basis,
+            ),
+            status=c.status,
+            resolution=None
+            if r is None
+            else conflicts_mod.Resolution(
+                r.id, r.conflict_key, r.action, r.candidate_fact_id, r.value, r.source_reference
+            ),
+            detail=c.detail,
+        )
+        for c, p, r in rows
+    ]
+
+
+def _store_conflicts(
+    db: Session,
+    dataset: FinancialDataset,
+    built: ds.BuiltDataset,
+    period_ids: dict[FiscalPeriod, uuid.UUID],
+    user_id: uuid.UUID | None,
+) -> None:
+    for c in built.conflicts:
+        m = c.materiality
+        db.add(
+            DataConflict(
+                dataset_id=dataset.id, conflict_key=c.key, kind=c.kind,
+                line_item_code=c.line_item, period_id=period_ids[c.period],
+                candidates=[x.as_dict() for x in c.candidates], policy_fact_id=c.policy_fact_id,
+                is_material=m.is_material, absolute_difference=m.absolute_difference,
+                relative_difference=m.relative_difference, threshold=m.threshold,
+                materiality_basis=m.basis, status=c.status,
+                resolution_id=c.resolution.id if c.resolution else None, detail=dict(c.detail),
+            )
+        )  # fmt: skip
+    if built.conflicts:
+        audit.record(
+            db,
+            action="conflicts_detected",
+            entity_type="financial_dataset",
+            entity_id=str(dataset.id),
+            user_id=user_id,
+            after={
+                "summary": built.summary["conflicts"],
+                "open_material": sorted(
+                    c.key
+                    for c in built.conflicts
+                    if c.status == "open" and c.materiality.is_material
+                ),
+            },
+        )
+
+
 def stored_values(db: Session, dataset: FinancialDataset) -> list[ds.DatasetValue]:
     rows = db.execute(
         select(FinancialValue, FiscalPeriodRow)
@@ -160,13 +266,14 @@ def header_of(dataset: FinancialDataset) -> ds.DatasetHeader:
         dataset.facts_as_of,
         dataset.input_sha256,
         dataset.format_version,
+        dataset.resolution_cutoff_id,
     )
 
 
 def stored_canonical(db: Session, dataset: FinancialDataset) -> bytes:
     values = stored_values(db, dataset)
     periods = sorted({v.period for v in values}, key=FiscalPeriod.sort_key)
-    return ds.canonical_bytes(header_of(dataset), periods, values)
+    return ds.canonical_bytes(header_of(dataset), periods, values, stored_conflicts(db, dataset))
 
 
 def _current(db: Session, company_id: uuid.UUID) -> FinancialDataset | None:
@@ -212,7 +319,10 @@ def build_dataset(
     user_id: uuid.UUID | None = None,
 ) -> BuildResult:
     mapping = mapping_mod.load(mappings_root, mapping_version)
-    built = _build(db, company, mapping, policy, facts_as_of)
+    cutoff = db.scalar(
+        select(func.max(ConflictResolution.id)).where(ConflictResolution.company_id == company.id)
+    )
+    built = _build(db, company, mapping, policy, facts_as_of, cutoff)
     current = _current(db, company.id)
     if (
         current is not None
@@ -261,6 +371,7 @@ def build_dataset(
         input_sha256=h.input_sha256,
         content_sha256=built.content_sha256,
         validation_sha256=built.validation_sha256,
+        resolution_cutoff_id=cutoff,
         interim_coverage=built.interim_coverage,
         value_count=len(built.values),
         source_summary=summary,
@@ -329,9 +440,12 @@ def build_dataset(
             "values": len(built.values),
             "validation_sha256": built.validation_sha256,
             "validation": built.summary["validation"],
+            "conflicts": built.summary["conflicts"],
+            "resolution_cutoff_id": cutoff,
             "parent_dataset_id": str(parent.id) if parent else None,
         },
     )
+    _store_conflicts(db, dataset, built, period_ids, user_id)
     db.flush()
     return BuildResult(dataset, created=True)
 
@@ -386,9 +500,9 @@ def verify_dataset(db: Session, dataset: FinancialDataset, *, mappings_root: Pat
     if dataset.status == "discarded":
         raise DatasetError(f"Dataset {dataset.id} is discarded and holds no values")
     values = stored_values(db, dataset)
-    periods = sorted({v.period for v in values}, key=FiscalPeriod.sort_key)
-    stored_bytes = ds.canonical_bytes(header_of(dataset), periods, values)
-    stored_ok = hashlib.sha256(stored_bytes).hexdigest() == dataset.content_sha256
+    stored_ok = hashlib.sha256(stored_canonical(db, dataset)).hexdigest() == (
+        dataset.content_sha256
+    )
     mapping = mapping_mod.load(mappings_root, dataset.mapping_version)
     rerun = checks_mod.validate(values, mapping, dataset.currency)
     validation_ok = (
@@ -398,7 +512,14 @@ def verify_dataset(db: Session, dataset: FinancialDataset, *, mappings_root: Pat
     )
     company = db.get(Company, dataset.company_id)
     assert company is not None
-    rebuilt = _build(db, company, mapping, Policy(dataset.selection_policy), dataset.facts_as_of)
+    rebuilt = _build(
+        db,
+        company,
+        mapping,
+        Policy(dataset.selection_policy),
+        dataset.facts_as_of,
+        dataset.resolution_cutoff_id,
+    )
     same_format = dataset.format_version == ds.FORMAT_VERSION
     return Verification(
         stored_matches=stored_ok,
@@ -435,6 +556,20 @@ def lock_dataset(
     )
     if ambiguous:
         raise DatasetError(f"{ambiguous} ambiguous value(s) must be resolved before locking (D13)")
+    open_material = db.scalar(
+        select(func.count())
+        .select_from(DataConflict)
+        .where(
+            DataConflict.dataset_id == dataset.id,
+            DataConflict.is_material.is_(True),
+            DataConflict.status == "open",
+        )
+    )
+    if open_material:
+        raise DatasetError(
+            f"{open_material} open material conflict(s) must be resolved or overridden with a "
+            "reason before locking (D13, D52)"
+        )
     check = verify_dataset(db, dataset, mappings_root=mappings_root)
     if not check.ok:
         raise DatasetError(f"Dataset {dataset.id} failed verification: {check}")
@@ -482,3 +617,140 @@ def discard_dataset(
     )
     db.flush()
     return dataset
+
+
+# ---- Conflict resolution workflow (Blueprint §10.3; D52) ------------------------------------
+
+MIN_REASON = 10
+
+
+def _meaningful(reason: str | None) -> str:
+    text = (reason or "").strip()
+    if len(text) < MIN_REASON or not any(ch.isalpha() for ch in text):
+        raise DatasetError(f"A meaningful reason of at least {MIN_REASON} characters is required")
+    return text
+
+
+def resolve_conflict(
+    db: Session,
+    dataset_id: uuid.UUID,
+    conflict_key: str,
+    action: str,
+    *,
+    reason: str,
+    candidate_fact_id: int | None = None,
+    value: Decimal | None = None,
+    source_reference: str | None = None,
+    user_id: uuid.UUID | None = None,
+) -> ConflictResolution:
+    """Record an analyst decision for a conflict detected in ``dataset_id``.
+
+    The decision is appended (never edits a dataset). It takes effect in the next build of
+    the company's dataset (see :func:`rebuild_draft`); locked versions are never changed.
+    """
+    reason_text = _meaningful(reason)
+    if action not in conflicts_mod.ACTIONS:
+        raise DatasetError(f"Unknown action {action!r}")
+    dataset = db.get(FinancialDataset, dataset_id)
+    if dataset is None:
+        raise DatasetError(f"No dataset {dataset_id}")
+    found = db.execute(
+        select(DataConflict, FiscalPeriodRow)
+        .join(FiscalPeriodRow, FiscalPeriodRow.id == DataConflict.period_id)
+        .where(DataConflict.dataset_id == dataset.id, DataConflict.conflict_key == conflict_key)
+    ).first()
+    if found is None:
+        raise DatasetError(f"Dataset {dataset_id} has no conflict {conflict_key}")
+    conflict, period = found
+    fact_ids = {c["fact_id"] for c in conflict.candidates}
+    if action == "select_candidate" and candidate_fact_id not in fact_ids:
+        raise DatasetError(f"Fact {candidate_fact_id} is not a candidate of {conflict_key}")
+    if action == "enter_value" and (value is None or not (source_reference or "").strip()):
+        raise DatasetError("enter_value needs a value and a source reference")
+    if action == "override" and conflict.kind == "within_filing":
+        raise DatasetError(
+            "A within-filing conflict has no usable value to keep; select a candidate or "
+            "enter a value"
+        )
+    previous = db.scalars(
+        select(ConflictResolution)
+        .where(
+            ConflictResolution.company_id == dataset.company_id,
+            ConflictResolution.conflict_key == conflict_key,
+        )
+        .order_by(ConflictResolution.id.desc())
+        .limit(1)
+    ).first()
+    if action == "revoke" and (previous is None or previous.action == "revoke"):
+        raise DatasetError(f"No active resolution for {conflict_key} to revoke")
+    resolution = ConflictResolution(
+        company_id=dataset.company_id,
+        conflict_key=conflict_key,
+        action=action,
+        candidate_fact_id=candidate_fact_id if action == "select_candidate" else None,
+        value=value if action == "enter_value" else None,
+        source_reference=source_reference.strip()
+        if action == "enter_value" and source_reference
+        else None,
+        reason=reason_text,
+        detected_in_dataset_id=dataset.id,
+        line_item_code=conflict.line_item_code,
+        period_type=period.period_type,
+        period_start=period.start_date,
+        period_end=period.end_date,
+        created_by=user_id,
+    )
+    db.add(resolution)
+    db.flush()
+    audit.record(
+        db,
+        action={"override": "conflict_overridden", "revoke": "conflict_resolution_revoked"}.get(
+            action, "conflict_resolved"
+        ),
+        entity_type="data_conflict",
+        entity_id=conflict_key,
+        user_id=user_id,
+        before={
+            "dataset_id": str(dataset.id),
+            "status": conflict.status,
+            "candidates": conflict.candidates,
+            "previous_resolution_id": previous.id if previous else None,
+        },
+        after={
+            "resolution_id": resolution.id,
+            "action": action,
+            "candidate_fact_id": resolution.candidate_fact_id,
+            "value": None if value is None else str(value),
+            "source_reference": resolution.source_reference,
+        },
+        reason=reason_text,
+    )
+    return resolution
+
+
+def rebuild_draft(
+    db: Session,
+    company: Company,
+    *,
+    mappings_root: Path,
+    mapping_version: str,
+    reason: str,
+    user_id: uuid.UUID | None = None,
+) -> BuildResult:
+    """Discard the company's open draft (if any) and build a new one with the current facts
+    and resolutions, keeping its selection policy and cut-off. Locked versions stay as
+    they are; the new draft's parent is the latest locked version."""
+    current = _current(db, company.id)
+    policy, as_of = Policy.LATEST_REPORTED, None
+    if current is not None and current.status == "draft":
+        policy, as_of = Policy(current.selection_policy), current.facts_as_of
+        discard_dataset(db, current.id, reason=_meaningful(reason), user_id=user_id)
+    return build_dataset(
+        db,
+        company,
+        mappings_root=mappings_root,
+        mapping_version=mapping_version,
+        policy=policy,
+        facts_as_of=as_of,
+        user_id=user_id,
+    )

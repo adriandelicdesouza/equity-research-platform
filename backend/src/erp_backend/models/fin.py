@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -61,6 +62,7 @@ class FinancialDataset(Base):
     input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     validation_sha256: Mapped[str | None] = mapped_column(String(64))
+    resolution_cutoff_id: Mapped[int | None] = mapped_column(BigInteger)
     interim_coverage: Mapped[str] = mapped_column(String(8), nullable=False)
     value_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -116,3 +118,54 @@ class ValidationResult(Base):
     unit: Mapped[str | None] = mapped_column(String(64))
     message: Mapped[str] = mapped_column(Text, nullable=False)
     inputs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+class ConflictResolution(Base):
+    """Append-only analyst decision on a conflict fingerprint (D52)."""
+
+    __tablename__ = "conflict_resolutions"
+    __table_args__ = {"schema": "fin"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.companies.id"))
+    conflict_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    candidate_fact_id: Mapped[int | None] = mapped_column(BigInteger)
+    value: Mapped[Decimal | None] = mapped_column(Numeric)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    detected_in_dataset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("fin.financial_datasets.id")
+    )
+    line_item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_type: Mapped[str] = mapped_column(String(4), nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("auth.users.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class DataConflict(Base):
+    """A conflict detected by one dataset build (immutable; kept after discard)."""
+
+    __tablename__ = "data_conflicts"
+    __table_args__ = {"schema": "fin"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fin.financial_datasets.id"))
+    conflict_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    line_item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fin.fiscal_periods.id"))
+    candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    policy_fact_id: Mapped[int | None] = mapped_column(BigInteger)
+    is_material: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    absolute_difference: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    relative_difference: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    threshold: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    materiality_basis: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    resolution_id: Mapped[int | None] = mapped_column(ForeignKey("fin.conflict_resolutions.id"))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

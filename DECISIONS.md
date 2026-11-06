@@ -387,6 +387,27 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Mapping v2** = v1 + `CF.FCF` (derived only; CFO + capex), loaded and pinned by migration `0007`. v1 stays loaded, and the default `ERP_MAPPING_VERSION` is now `v2`. LTM is a new period type.
 - **Older datasets:** a format-1 dataset can still be checked against its stored rows. The rebuild comparison needs the current code's format (`rebuild_matches = None`), and such a dataset has no stored checks, so it can't be locked; build a new version instead.
 
+### D52. Data conflicts: detection, materiality, resolutions as build inputs (§10.3; D13)
+- **What is a conflict** (competing values for one company, item and period; pure `standardization/conflicts.py`, run on every build before derivations):
+  - **`within_filing`:** one filing reports one fact key with different values. Always material.
+  - **`mixed_vintage`:** an item was restated (first-reported ≠ latest), and the value the policy chose comes from a newer filing than items tied to it by an accounting identity in the same period (balance sheet, a subtotal, the cash roll-forward, IS/CF net income). Candidates: the first- and latest-reported facts.
+- **Not conflicts:** other units or durations (different fact keys), other concepts (different XBRL definitions, kept as `alternatives`), and restatements re-reported consistently by the same filing.
+- **Materiality** (§10.3): any sign disagreement is material. Otherwise material when |a − b| > max(r × |larger|, 0.05% × base), where r = 0.1% for DCF-critical items and 0.5% for others, and the base is the period's total assets, else its revenue. Immaterial conflicts are `auto_resolved_immaterial` (the policy value stays) and remain visible.
+- **Resolutions** (`fin.conflict_resolutions`, append-only, reason ≥ 10 characters with letters, enforced in the service and the database):
+  - `select_candidate`: use a candidate's reported fact.
+  - `enter_value`: an analyst value with a source reference; provenance `analyst`.
+  - `override`: keep the policy value, documented. Not allowed for within-filing conflicts, which have no value to keep.
+  - `revoke`.
+
+  They are keyed by the conflict fingerprint (kind, item, period, every candidate's fact id and value). A changed candidate set reopens the conflict, so a stale decision never applies to new facts.
+- **Lifecycle:**
+  - Resolutions never edit a dataset. They apply to the next build (`rebuild_draft` / `conflict-resolve` discards the open draft and builds the next version).
+  - Each dataset records `resolution_cutoff_id` and replays exactly those resolutions on verification, so later decisions never change earlier versions and locked versions stay untouched.
+  - Conflicts (`fin.data_conflicts`) are part of the canonical bytes (format 3). Format-2 bytes are unchanged.
+  - Conflicts are draft-insert-only, never updated or deleted, so discarded drafts keep them as history.
+  - **Locking is refused while any material conflict is open**, enforced in the service and the trigger. Overridden conflicts are allowed, as the documented override path.
+- **Audit:** `conflicts_detected` (per build, with the open material keys), `conflict_resolved` / `conflict_overridden` / `conflict_resolution_revoked` (before: candidates, status, previous resolution; after: the decision; with the reason), plus the dataset discard and create events.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
