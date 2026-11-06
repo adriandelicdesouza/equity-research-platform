@@ -87,6 +87,16 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 | Unofficial price source | See §2. A sudden outage stops price updates; valuations keep their dated prices. |
 | Single developer | Mitigated by the reference-first rule (D26). |
 
+## 4a. Implementation state (M0, Session 2)
+
+- **No financial functionality yet:** `erp_engine` only carries its version. Calculation modules start in M1.
+- **No worker or job queue:** added in M2 (D32).
+- **Image tags not pinned:** base images use tags, not digests. Digest pinning is scheduled for M5.
+- **Rate limiter:** in-memory, so it resets when the API restarts.
+- **Memory under load:** concurrent logins are the API's largest memory consumer, because each Argon2 verification takes 19 MiB. See `docs/operations/memory.md`.
+- **Upstream warning:** a Starlette deprecation warning (`httpx` test client) appears in backend tests. It's harmless and will be revisited when FastAPI's test-client guidance settles.
+- **Minecraft co-residency:** not yet measured; deferred to M5 by the owner (2026-11-06).
+
 ## 5. Unresolved items
 
 1. SEC User-Agent contact string (needed for M2).

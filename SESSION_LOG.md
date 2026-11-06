@@ -102,3 +102,37 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
   - (b) SEC User-Agent deferred to M2.
   - (c) Commit all five docs plus `CLAUDE.md` to `main`.
 - Status lines in the three architecture documents changed to APPROVED. Docs checkpoint committed. M0 work is on branch `m0-foundation`.
+- **M0 Foundation implemented** on `m0-foundation`:
+  - Workspace: uv workspace with `engine` and `backend`, resolved with `exclude-newer`; uv pinned in `.tools/`.
+  - Backend: FastAPI app with Argon2id auth, `__Host-` server-side sessions, CSRF token plus Origin check, rate limiting, RBAC (3 roles, 12 permissions), append-only audit log, structured errors, request IDs.
+  - Database: Alembic baseline `0001`; 3-role DB model (D31).
+  - Frontend: React login/home shell.
+  - Infra: Compose `erp-dev` (`web`/`api`/`db`/`migrate`); Caddy with HTTP on loopback and internal-CA HTTPS; Makefile; memory and load scripts; docs.
+- **Checks:** `make check` green (ruff, eslint, mypy strict, tsc, 29 pytest, 2 vitest). Smoke and HTTPS end-to-end flows pass.
+- **Fixes found during M0:**
+  - IP-address HTTPS needed Caddy `default_sni` (D30).
+  - API retained 279 MiB after load; `MALLOC_ARENA_MAX=2` brought it to 199 MiB (D33).
+  - The empty editable install and `uv run` re-sync behaviour now need `--all-packages`.
+- **Decisions added:** D29–D34. D29 deviates from Blueprint §12.2: data and secrets live in the git-ignored repo dirs (CLAUDE.md "work within repository").
+- **Memory:** idle 184 MiB, load peak 365 MiB (sum of per-container peaks). Details in `docs/operations/memory.md`.
+- **Still open in M0:**
+  - Minecraft co-residency test (permission pending).
+  - Tailscale-IP listener, verified at prod deploy (M5). Same mechanism tested on loopback.
+- **Incident:** one foreground command was killed (exit 137) during the restart. Not OOM: the host had about 6 GB free and the API showed `OOMKilled=false`. It left `web` in "Created"; resolved by re-running `make up-dev`. Long runs now go to background jobs.
+- **End of Session 2 (handoff, ~12:50 UTC).**
+  - **Git:**
+    - `m0-foundation` @ `bdc1ac8` (M0) and `main` @ `4855614` (docs). Not merged.
+    - **No Git remote is configured**, so nothing has been pushed.
+    - This log entry and the `NEXT_SESSION.md` rewrite are uncommitted (no commit authorized during handoff).
+  - **Files in `bdc1ac8`:**
+    - New: `Makefile`, `README.md`, `.dockerignore`, `pyproject.toml`, `uv.lock`, `engine/**`, `backend/**`, `frontend/**` (incl. `package-lock.json`), `infra/**` (compose ×3, Dockerfiles, Caddyfile, postgres init, env examples, scripts), `docs/DEVELOPMENT.md`, `docs/operations/memory.md`.
+    - Modified: `.gitignore` (adds `secrets/`, `.tools/`), `DECISIONS.md` (D29–D34), `KNOWN_LIMITATIONS.md` (§4a), `TECHNICAL_BLUEPRINT.md` (data-root row only, per D29), `SESSION_LOG.md`, `NEXT_SESSION.md`.
+    - Deleted: none.
+  - **Untracked/ignored runtime state:** `.venv/`, `.tools/`, `frontend/node_modules/`, `.env.dev`, `secrets/dev/`, `data/dev/`.
+  - **Running:** `erp-dev` containers (`web`/`api`/`db`), loopback only, left running. Minecraft inactive.
+  - **Consistency check:**
+    - Status lines in the three architecture docs agree: APPROVED 2026-11-06.
+    - D29 is reflected in Blueprint §12.2.
+    - Minor gap, not edited: the Blueprint §12.2 dev port row lists 8091 (+5173) but not the dev HTTPS port `127.0.0.1:8444` or DB `127.0.0.1:5433`. Both are documented in `docs/DEVELOPMENT.md` and D30, and both are loopback-only. No architectural change.
+  - **Owner question asked and still unanswered:** permission for the Minecraft co-residency test.
+- **Owner decision (end of Session 2):** Minecraft co-residency test **deferred to M5**. Handoff files committed. The merge of `m0-foundation` into `main` is not yet confirmed.

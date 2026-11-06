@@ -1,0 +1,47 @@
+{
+	admin off
+	persist_config off
+	auto_https disable_redirects
+	skip_install_trust
+	# Clients send no SNI when connecting to a bare IP (e.g. the Tailscale IP); use this name.
+	default_sni {$ERP_TLS_DEFAULT_SNI}
+}
+
+(app) {
+	encode zstd gzip
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+	handle /healthz {
+		respond "ok" 200
+	}
+	handle /api/* {
+		request_body {
+			max_size 25MB
+		}
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Plain HTTP: published on loopback only (and used by cloudflared, which connects locally).
+http://:8080 {
+	import app
+}
+
+# HTTPS for Tailscale / LAN / local TLS testing, certificates from Caddy's internal CA.
+{$ERP_TLS_SITES} {
+	tls internal
+	header Strict-Transport-Security "max-age=31536000"
+	import app
+}

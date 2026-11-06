@@ -1,0 +1,8 @@
+# Development: everything bound to loopback only.
+services:
+  db:
+    ports: ["${ERP_DB_BIND:?}:5432"]   # loopback, for local tests/tooling only
+  web:
+    ports:
+      - "${ERP_HTTP_BIND:?}:8080"
+      - "${ERP_HTTPS_BIND:?}:8443"

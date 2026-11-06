@@ -1,64 +1,56 @@
 # Next Session Handoff
 
-**Written:** 2026-11-06 (end of Session 1). See `SESSION_LOG.md` for what was done.
+**Updated:** 2026-11-06, end of Session 2. Full history: `SESSION_LOG.md`.
 
-## Status — read first
+## Verified state at handoff
 
-- **Superseded (Session 2):** architecture Revision 2 was APPROVED on 2026-11-06 and M0 is in progress. This file will be rewritten at the end of Session 2.
-- **No implementation has been authorized.** Until approval:
-  - Do not install dependencies.
-  - Do not create application code.
-  - Do not create Docker resources.
-  - Do not start any milestone (M0–M5).
-- The three documents are **untracked and uncommitted** (with `SESSION_LOG.md` and this file). Do not commit, stage, discard or revert them without the user's instruction.
+- **Architecture:** Revision 2 **APPROVED** (2026-11-06). Implementation authorized per the Blueprint §14.1 roadmap.
+- **Git:**
+  - Branch `m0-foundation` @ `bdc1ac8`: M0 complete except the open items below.
+  - `main` @ `4855614`: docs only. **Not merged.**
+  - **No remote configured; nothing pushed.**
+  - Handoff committed on `m0-foundation` (see `git log`).
+- **Dev stack `erp-dev`:** running (`web`, `api`, `db`), loopback only on 8091 (HTTP), 8444 (HTTPS), 5433 (DB).
+- **Dev admin:** user `admin`, password in `secrets/dev/initial_admin_password`.
+- **Checks:** last `make check` all green (ruff, eslint, mypy --strict, tsc, 29 pytest, 2 vitest).
 
-## Outstanding decisions (user's to make)
+## Decisions needing the owner
 
-| # | Decision | Notes |
-|---|---|---|
-| a | **Architecture approval** | Approve, or request further changes to Revision 2 |
-| b | **SEC User-Agent contact string** | Required by SEC (403 without it). Stored only in `.env`, never committed. Needed by M2 |
-| c | **Whether to commit the three documents** | Plus whether to include `SESSION_LOG.md` / `NEXT_SESSION.md` |
+1. **Minecraft co-residency test: DEFERRED to M5** by the owner (2026-11-06). Do not start `minecraft.service`; ask again at M5.
+2. **Merge `m0-foundation` into `main`.** Commit of the handoff was authorized; the merge itself has not been explicitly confirmed. Ask first.
+3. **SEC User-Agent contact string.** Needed before M2; goes in `.env` only.
+4. **Off-server backup destination.** Needed before production (M5 gate), not before development.
 
-## Other pending items (not blocking development start)
+## Prerequisites at startup
 
-- **Minecraft startup permission is still pending.**
-  - Minecraft (`minecraft.service`, currently disabled/stopped) is an existing service.
-  - **Ask the user before starting it**, or ask them to start it, for the memory co-residency test at M0/M5.
-  - Never start, stop or restart it without explicit permission.
-- **Off-server backup destination:** required **before production acceptance (M5 gate), not before development.**
-- **Later approvals:**
-  - Cloudflare tunnel hostname + Access policy.
-  - Optional LAN binding.
-  - Optional `tailscale serve` instead of Caddy's internal CA.
-  - Optional free-key providers.
-  - Full list: `DECISIONS.md` → "Pending decisions".
+```bash
+cd ~/equity-research-platform
+git status --short && git log --oneline -3 --all   # expect handoff commit, bdc1ac8, 4855614, a7b6556
+make ps-dev || make up-dev                         # web/api/db healthy
+make check                                         # all green
+```
 
-## Exact next steps when the user returns
+Use `make` targets or `.tools/bin/uv run --all-packages …`; plain `uv run` removes the workspace packages. Run long jobs in the background.
 
-1. Re-read `CLAUDE.md` and `MASTER_BRIEF.md` (required by `CLAUDE.md` before any project task).
-2. Verify state matches the handoff:
-   - `git status --short` should show exactly the five untracked `.md` files.
-   - `git log -1` should show `a7b6556`.
-   - Check the SHA-256 hashes in `SESSION_LOG.md` §6 with `sha256sum TECHNICAL_BLUEPRINT.md DECISIONS.md KNOWN_LIMITATIONS.md`.
-   - Report any difference before doing anything else.
-3. Present the three outstanding decisions (a, b, c) and wait for answers.
-4. If the architecture is **not** approved: revise the documents as requested, update `SESSION_LOG.md`, and stop for approval again.
-5. If the architecture **is** approved:
-   1. Change the status lines in `TECHNICAL_BLUEPRINT.md`, `DECISIONS.md` and `KNOWN_LIMITATIONS.md` from "proposed" to "approved", with the approval date.
-   2. Commit the documents if the user decided so in (c). Use a feature branch if work beyond docs starts; `main` stays stable.
-   3. Begin **M0 Foundation** (Blueprint §14.1):
-      - repo layout, `uv`/npm lock files, `erp-dev` Compose project on `127.0.0.1:8091`;
-      - Postgres 17 + Alembic baseline, Caddy, health checks;
-      - auth with `__Host-` secure sessions, RBAC skeleton, audit table, `make check`;
-      - memory measurement script.
-   4. Record idle and synthetic-load memory in `docs/operations/memory.md`, next to the estimates (Blueprint §1.2).
-   5. Before any Minecraft co-residency test, **ask for permission**.
-   6. Put the SEC User-Agent (once provided) in `.env` only. Confirm `.env` is git-ignored (it is: `.gitignore` covers `.env` and `.env.*`).
-   7. Then M1 (engine core + DCF): write `docs/methodology/dcf.md` first, then the independent reference (§13.1.1), then the engine.
+## Exact next task
 
-## Constraints that remain in force
+**Merge M0 (with confirmation), then start M1.**
 
-- Don't modify unrelated containers or services, or the Cloudflare, Tailscale or firewall configuration. No `sudo`.
-- No AI functionality, no portfolio management, no paid services.
-- Never read or display credential files (for example, tunnel credentials).
+1. M0 is closed (Minecraft test deferred to M5). Confirm the merge of `m0-foundation` into `main`, then create branch `m1-engine`.
+2. (Former step, now at M5) Minecraft co-residency: `make measure-memory` idle and under `loadgen.py`, with Minecraft running. Pass: no OOM kill, host MemAvailable > 500 MiB, no sustained swap growth.
+3. M1, step 1: write `docs/methodology/dcf.md`. Cover:
+   - discounting conventions;
+   - stub Modes A/B and roll-forward (Blueprint §7.4);
+   - FCFF and FCFE (FCFE has no bridge, §7.3);
+   - terminal value and coherence checks (§7.6);
+   - WACC with ERP/CRP and beta (§7.5);
+   - leases (§7.7.1); dilution (§7.7.2); output kinds (§6.6).
+   Include at least 3 hand-worked benchmark examples with every intermediate number.
+4. M1, step 2: independent reference in `engine/tests/reference/` (`Fraction`/`mpmath`, backward recursion, economic-profit identity). It must not import `erp_engine`; add an import-linter contract. See Blueprint §13.1.1.
+5. M1, step 3: `erp_engine` modules (Blueprint §6.1), then the policy-guard tests (§13.1).
+
+## Verification criteria for M1, step 1
+
+- Every convention in the methodology doc cites its Blueprint section.
+- Benchmarks are computed independently of any code.
+- No engine code exists before the reference spec.

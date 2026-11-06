@@ -905,7 +905,7 @@ equity-research-platform/
 |---|---|---|
 | Compose project | `erp-dev` | `erp-prod` |
 | Port | 127.0.0.1:8091 (+ Vite 127.0.0.1:5173), loopback only | 127.0.0.1:8090 (HTTP) + `<tailscale-ip>`:8443 (HTTPS) |
-| Data root | `~/erp-data/dev/` | `~/erp-data/prod/` |
+| Data root | `<repo>/data/dev/` (git-ignored; was `~/erp-data/dev/`, changed by D29) | `<repo>/data/prod/` (D29) |
 | Database | separate instance & volume | separate instance & volume |
 | Code | bind-mounted, hot reload | built images, tagged by git SHA |
 
