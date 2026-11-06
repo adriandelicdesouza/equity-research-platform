@@ -1,0 +1,157 @@
+# Base services. Always combined with compose.dev.yaml or compose.prod.yaml and an env file:
+#   docker compose --env-file .env.dev -f infra/compose.yaml -f infra/compose.dev.yaml ...
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must be set in the env file}
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-app-env: &app-env
+  ERP_ENV: ${ERP_ENV:?}
+  ERP_LOG_LEVEL: ${ERP_LOG_LEVEL:-INFO}
+  ERP_DB_HOST: db
+  ERP_DB_NAME: ${ERP_DB_NAME:-erp}
+  ERP_DB_APP_PASSWORD_FILE: /run/secrets/db_app_password
+  ERP_ALLOWED_ORIGINS: ${ERP_ALLOWED_ORIGINS:?}
+
+services:
+  db:
+    image: ${ERP_POSTGRES_IMAGE:?}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_superuser_password
+      ERP_DB_NAME: ${ERP_DB_NAME:-erp}
+    secrets: [pg_superuser_password, db_owner_password, db_app_password]
+    volumes:
+      - ${ERP_DATA_ROOT:?}/postgres:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=384MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=25
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - log_min_duration_statement=1000
+    mem_limit: ${ERP_DB_MEM:-576m}
+    memswap_limit: ${ERP_DB_MEM:-576m}
+    cpus: ${ERP_DB_CPUS:-1.0}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${ERP_DB_NAME:-erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    networks: [internal]
+    logging: *logging
+
+  migrate:
+    image: erp-app:${ERP_IMAGE_TAG:?}
+    build: { context: .., dockerfile: infra/docker/app.Dockerfile }
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    restart: "no"
+    environment:
+      <<: *app-env
+      ERP_DB_OWNER_PASSWORD_FILE: /run/secrets/db_owner_password
+    secrets: [db_owner_password, db_app_password]
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 256m
+    memswap_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [internal]
+    logging: *logging
+
+  api:
+    image: erp-app:${ERP_IMAGE_TAG:?}
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - --factory
+      - erp_backend.main:app_factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - ${ERP_WEB_IP:?}
+      - --no-server-header
+    environment:
+      <<: *app-env
+      # Limit glibc malloc arenas: threadpool threads otherwise retain freed Argon2 buffers.
+      MALLOC_ARENA_MAX: "2"
+    secrets: [db_app_password]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    mem_limit: ${ERP_API_MEM:-384m}
+    memswap_limit: ${ERP_API_MEM:-384m}
+    cpus: ${ERP_API_CPUS:-1.5}
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [internal]
+    logging: *logging
+
+  web:
+    image: erp-web:${ERP_IMAGE_TAG:?}
+    build: { context: .., dockerfile: infra/docker/web.Dockerfile }
+    restart: unless-stopped
+    user: "${ERP_UID:?}:${ERP_GID:?}"
+    environment:
+      ERP_TLS_SITES: ${ERP_TLS_SITES:?}
+      ERP_TLS_DEFAULT_SNI: ${ERP_TLS_DEFAULT_SNI:?}
+    volumes:
+      - ${ERP_DATA_ROOT:?}/caddy/data:/data
+      - ${ERP_DATA_ROOT:?}/caddy/config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: ${ERP_WEB_MEM:-48m}
+    memswap_limit: ${ERP_WEB_MEM:-48m}
+    cpus: 0.5
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      internal:
+        ipv4_address: ${ERP_WEB_IP:?}
+    logging: *logging
+
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${ERP_SUBNET:?}
+
+secrets:
+  pg_superuser_password: { file: "${ERP_SECRETS_DIR:?}/pg_superuser_password" }
+  db_owner_password: { file: "${ERP_SECRETS_DIR:?}/db_owner_password" }
+  db_app_password: { file: "${ERP_SECRETS_DIR:?}/db_app_password" }

@@ -1,0 +1,6 @@
+# Production: HTTP on loopback (cloudflared), HTTPS on the Tailscale IP. No database port.
+services:
+  web:
+    ports:
+      - "${ERP_HTTP_BIND:?}:8080"
+      - "${ERP_HTTPS_BIND:?}:8443"

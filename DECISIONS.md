@@ -193,6 +193,38 @@ Each decision lists the choice, why, the alternative rejected, and the trade-off
 
 ---
 
+## Implementation decisions during M0 (Session 2)
+
+These refine the approved architecture. None changes an approved methodology decision.
+
+### D29. Runtime data and secrets live inside the repository directory (git-ignored)
+- **Choice:** `DATA_ROOT` defaults to `<repo>/data/<env>/`, and secrets to `<repo>/secrets/<env>/`. Blueprint §12.2 proposed `~/erp-data/<env>/`.
+- **Why:** `CLAUDE.md` requires working exclusively within this repository. The path is still configurable (`ERP_DATA_ROOT`) for a later move to external storage.
+- **Safeguards:** both directories are git-ignored and excluded from the Docker build context (`.dockerignore`). `secrets/` is mode 0700.
+
+### D30. Caddy `default_sni` for IP-address HTTPS
+- **Finding:** clients send no TLS SNI when connecting to a bare IP. The internal-CA listener then failed the handshake for `https://127.0.0.1:8444`. The planned prod Tailscale-IP listener would have failed the same way.
+- **Choice:** set `default_sni` to the IP (`ERP_TLS_DEFAULT_SNI`). Verified over HTTPS by IP and by hostname.
+
+### D31. Three database roles
+- **Roles:** `postgres` (bootstrap/tests only), `erp_owner` (migrations; owns DB, not superuser), `erp_app` (runtime least privilege).
+- **Audit log:** append-only twice over. `erp_app` has only INSERT/SELECT, and triggers reject UPDATE/DELETE/TRUNCATE for every role, including the owner. Tested.
+
+### D32. Worker container deferred to the first milestone that needs it
+- **Choice:** M0 runs `web`, `api`, `db` and a one-shot `migrate`.
+- **When:** the `worker` service (procrastinate queue) is added in M2, when ingestion jobs exist. No placeholder container runs before then.
+- **Budget:** unchanged (576 MB for the worker).
+
+### D33. `MALLOC_ARENA_MAX=2` for the API container
+- **Finding:** 8 concurrent clients with logins pushed the API to 294 MiB peak, and 279 MiB stayed resident after the load ended. That was 77% of its 384 MiB cap.
+- **Cause:** glibc's per-thread malloc arenas in the request threadpool keep freed Argon2 buffers (19 MiB per verification).
+- **Choice:** set `MALLOC_ARENA_MAX=2`. Measured effect: `docs/operations/memory.md`.
+
+### D34. Login rate limit keys
+- **Keys:** `(client IP, username)` and `username` alone.
+- **Why:** requests arriving through cloudflared share one source address. Per-account limiting still works when IPs are indistinguishable.
+- **Scope:** in-memory, valid because the API runs one process.
+
 ## Pending decisions (need your input)
 
 | # | Decision | Needed by |

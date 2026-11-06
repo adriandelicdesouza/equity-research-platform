@@ -35,3 +35,9 @@ backups/
 .DS_Store
 .idea/
 .vscode/
+
+# Secrets (generated per environment; never committed)
+secrets/
+
+# Local tool venv (uv)
+.tools/

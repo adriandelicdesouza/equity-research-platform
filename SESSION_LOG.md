@@ -102,3 +102,20 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
   - (b) SEC User-Agent deferred to M2.
   - (c) Commit all five docs plus `CLAUDE.md` to `main`.
 - Status lines in the three architecture documents changed to APPROVED. Docs checkpoint committed. M0 work is on branch `m0-foundation`.
+- **M0 Foundation implemented** on `m0-foundation`:
+  - Workspace: uv workspace with `engine` and `backend`, resolved with `exclude-newer`; uv pinned in `.tools/`.
+  - Backend: FastAPI app with Argon2id auth, `__Host-` server-side sessions, CSRF token plus Origin check, rate limiting, RBAC (3 roles, 12 permissions), append-only audit log, structured errors, request IDs.
+  - Database: Alembic baseline `0001`; 3-role DB model (D31).
+  - Frontend: React login/home shell.
+  - Infra: Compose `erp-dev` (`web`/`api`/`db`/`migrate`); Caddy with HTTP on loopback and internal-CA HTTPS; Makefile; memory and load scripts; docs.
+- **Checks:** `make check` green (ruff, eslint, mypy strict, tsc, 29 pytest, 2 vitest). Smoke and HTTPS end-to-end flows pass.
+- **Fixes found during M0:**
+  - IP-address HTTPS needed Caddy `default_sni` (D30).
+  - API retained 279 MiB after load; `MALLOC_ARENA_MAX=2` brought it to 199 MiB (D33).
+  - The empty editable install and `uv run` re-sync behaviour now need `--all-packages`.
+- **Decisions added:** D29–D34. D29 deviates from Blueprint §12.2: data and secrets live in the git-ignored repo dirs (CLAUDE.md "work within repository").
+- **Memory:** idle 184 MiB, load peak 365 MiB (sum of per-container peaks). Details in `docs/operations/memory.md`.
+- **Still open in M0:**
+  - Minecraft co-residency test (permission pending).
+  - Tailscale-IP listener, verified at prod deploy (M5). Same mechanism tested on loopback.
+- **Incident:** one foreground command was killed (exit 137) during the restart. Not OOM: the host had about 6 GB free and the API showed `OOMKilled=false`. It left `web` in "Created"; resolved by re-running `make up-dev`. Long runs now go to background jobs.
