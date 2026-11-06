@@ -225,3 +225,27 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
   - **`KNOWN_LIMITATIONS.md` §4b added.**
   - **`make check` green:** lint, 2 import contracts kept, mypy strict on 46 files, 109 engine, 28 backend, 2 frontend tests.
   - Committed on `m1-engine`. Not merged; not pushed (no remote).
+- **Merge (owner-approved):** `m1-engine` → `main` with `--no-ff` (`057b963`). `main` tree identical to the branch; `make check` green; clean. Not pushed (no remote).
+- **M2 preparation** on branch `m2-ingestion`:
+  - **Dependencies (owner-approved, D40):** `procrastinate` 3.10.0, `duckdb` 2.0.0, `zstandard` 0.25.0 added to the backend runtime; `httpx` moved from dev to runtime. Locked under `exclude-newer`. About +105 MB installed; an import-linter contract keeps DuckDB out of request-serving modules.
+  - **Migrations:**
+    - `0002`: procrastinate schema frozen in-repo (`backend/alembic/sql/procrastinate_3_10_0.sql`), applied in schema `jobs` with app-role grants (D41).
+    - `0003`: `source.providers` (7 providers seeded, all disabled) and `source.provider_fetches`, append-only by trigger and grants.
+  - **Code:**
+    - `erp_backend/ingestion/archive.py`: content-addressed zstd archive; atomic, read-only files; hash-verified reads.
+    - `ingestion/http.py`: `ProviderClient` with required User-Agent, rate limiter, bounded retries honouring `Retry-After`, URL redaction; `fetch_and_archive` archives before parsing and logs the fetch.
+    - `ingestion/sec.py`: SEC gate (D42). No client can exist without a valid owner-supplied `ERP_SEC_USER_AGENT`; placeholders are rejected.
+    - `jobs.py` (queue app, `sync_app`, `defer`), `tasks.py` (`system.ping`), `worker.py` (with `--check`), CLI `enqueue-ping`, `models/source.py`, config `raw_root` / `sec_user_agent`.
+  - **Infra:**
+    - Compose `worker` service: concurrency 1, 576 MiB cap, `cpu_shares` 512, host-user write to `data/<env>/raw`, read-only root filesystem, health check.
+    - Make targets `enqueue-ping-dev` and `data-dev` (raw directory).
+  - **Fixed during the work:**
+    - In procrastinate 3.10, `configure_task` ignores `with_connector`, so a `defer()` helper binds the job manager explicitly.
+    - Exceptions renamed to `…Error` (lint).
+  - **Verification:**
+    - `make check` green: lint, 4 import contracts, mypy strict (54 files), 109 engine + 57 backend + 2 frontend tests.
+    - Real enqueue → worker → `succeeded` on the test DB and in the running dev stack.
+    - Dev DB at Alembic `0003`.
+    - Memory idle: worker 36 MiB, API unchanged (`docs/operations/memory.md`).
+  - **No SEC request was made.** `ERP_SEC_USER_AGENT` is not configured anywhere. Every HTTP test uses `MockTransport`.
+  - Docs: DECISIONS D40–D42; `docs/DEVELOPMENT.md` (jobs and archive section). Committed on `m2-ingestion`, not merged.

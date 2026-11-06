@@ -256,6 +256,34 @@ These refine the approved architecture. None changes an approved methodology dec
 - **FCFF:** stubs are fully supported.
 - **Plan:** revisit with the R2 debt schedule.
 
+## Implementation decisions during M2 preparation (Session 3)
+
+### D40. Runtime dependencies for ingestion (owner-approved 2026-11-06), with a footprint guard
+| Package | Purpose | Installed size |
+|---|---|---|
+| `httpx` (moved from dev to runtime) | Provider HTTP client: timeouts, mockable transport for tests | ~1.5 MB (with `httpcore`) |
+| `procrastinate` 3.10 (+ `psycopg-pool`, `python-dateutil`) | Job queue on PostgreSQL (D2): ingestion, syncs, large sensitivity grids | ~1.4 MB |
+| `duckdb` 2.0 | Analytical queries over archived payloads and Postgres (D8) | ~65 MB native library |
+| `zstandard` 0.25 | Compression of the raw payload archive | ~23 MB |
+
+- **Total:** about 105 MB more on disk in the app image. That image is shared by `api`, `worker` and `migrate`, so it's stored once.
+- **Memory guard:** an import-linter contract forbids importing `duckdb` from request-serving modules (`erp_backend.main/api/auth/security`). DuckDB is loaded only by worker tasks, never resident in the API process.
+- **Retries:** implemented directly (bounded exponential backoff, honouring `Retry-After`) instead of adding `tenacity` (Blueprint §2.1).
+
+### D41. Job queue schema frozen in the repository, isolated in schema `jobs`
+- **Schema SQL:** procrastinate 3.10.0's schema SQL is stored as `backend/alembic/sql/procrastinate_3_10_0.sql` and applied by migration `0002` with `search_path=jobs`. A procrastinate upgrade is therefore an explicit migration, never implicit.
+- **Connections:** all queue connections set `search_path=jobs`. `erp_app` gets DML/EXECUTE there only.
+- **Deferral from sync code:** goes through `erp_backend.jobs.defer()`. In 3.10, `App.configure_task` binds to the original app's connector, which bypasses the sync connector.
+- **Fetch log:** `source.provider_fetches` is append-only. `erp_app` has INSERT/SELECT only, and a trigger rejects UPDATE/DELETE/TRUNCATE for every role.
+
+### D42. SEC access is impossible without the owner's contact User-Agent
+- **The gate:** `erp_backend.ingestion.sec.sec_client()` is the only way to build an SEC client. It validates `ERP_SEC_USER_AGENT`:
+  - required;
+  - must contain an email address;
+  - reserved or example domains and placeholder words are rejected.
+- **No default:** none exists, and the setting is never committed (`.env` only).
+- **Tests:** they use a `MockTransport` with a clearly labelled validator fixture, so no test can reach SEC.
+
 ## Pending decisions (need your input)
 
 | # | Decision | Needed by |

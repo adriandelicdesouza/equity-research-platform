@@ -14,6 +14,11 @@ dependencies = [
     "pydantic-settings>=2.4",
     "argon2-cffi>=23.1",
     "structlog>=24.1",
+    # M2 data ingestion (owner-approved 2026-11-06; purposes in DECISIONS.md D40)
+    "httpx>=0.27",
+    "procrastinate>=2.0",
+    "duckdb>=1.0",
+    "zstandard>=0.22",
 ]
 
 [tool.uv.sources]

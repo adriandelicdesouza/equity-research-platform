@@ -65,6 +65,13 @@ Backend tests:
   - `engine/tests/test_reference_independence.py`.
 - **Benchmarks:** the fixtures in `engine/tests/fixtures/benchmarks/` hold the methodology document's benchmarks B1, B1-VD, B2, B3 and B4.
 
+## Background jobs and raw archive (M2)
+
+- **`worker` service:** runs `python -m erp_backend.worker` (procrastinate, concurrency `ERP_WORKER_CONCURRENCY`, default 1). Health check: `python -m erp_backend.worker --check`.
+- **Queue check:** `make enqueue-ping-dev` queues a `system.ping` job; the worker log shows it completing.
+- **Raw archive:** provider payloads are stored content-addressed and zstd-compressed under `data/<env>/raw/<provider>/<aa>/<sha256>.zst` (read-only files). Every fetch is logged in `source.provider_fetches` (append-only).
+- **SEC:** requires `ERP_SEC_USER_AGENT` in `.env.dev`/`.env.prod`, supplied by the owner (D42). Without it, no SEC client can be created.
+
 ## Database access model
 
 | Role | Used by | Rights |

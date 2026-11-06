@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12
 
+    # Raw provider payload archive (append-only, content-addressed; Blueprint §4.1).
+    raw_root: Path = Path("/data/raw")
+
+    # SEC EDGAR: required contact User-Agent (owner-supplied; no default, D42).
+    sec_user_agent: str | None = None
+
     login_max_attempts: int = 5
     login_window_seconds: int = 900
 

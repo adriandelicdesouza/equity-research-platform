@@ -4,47 +4,59 @@
 
 ## Verified state
 
-- **Architecture:** Revision 2 APPROVED (D27 amended; D35–D39 added).
-- **Methodology:** `docs/methodology/dcf.md` APPROVED.
+- **Architecture:** Revision 2 APPROVED (decisions up to D42).
 - **Git:**
-  - `main` @ `0c42321` (M0).
-  - `m1-engine` holds the methodology, reference and **M1 engine** commits. **Not merged.**
+  - `main` @ `057b963` (M0 + M1).
+  - Branch **`m2-ingestion`** holds the M2-preparation commit. **Not merged.**
   - No remote; nothing pushed.
-- **Engine `erp_engine`:** M1 scope complete and validated. That covers core, typed outputs, forecast with leases, FCFF/FCFE, stub A/B, roll-forward, terminal values, bridge, dilution, WACC, classification gate and golden master.
-  - It matches all five benchmarks and the independent reference.
-  - It isn't exposed through the API or UI yet.
-- **Dev stack `erp-dev`:** running, loopback only.
+- **Done for M2 so far:**
+  - runtime dependencies (D40);
+  - job queue in schema `jobs` and `worker` service (D41);
+  - `source.providers` and append-only `source.provider_fetches`;
+  - raw payload archive;
+  - provider HTTP client;
+  - SEC User-Agent gate (D42).
+- **Dev stack `erp-dev`:** `web`, `api`, `db`, `worker`, all healthy, loopback only. DB at Alembic `0003`.
+- **No SEC request has ever been made by the application.** `ERP_SEC_USER_AGENT` is not configured.
 
-## Decisions needing the owner
+## BLOCKING decision — needs the owner
 
-1. **Merge `m1-engine` into `main`?** M1 exit criteria are met (Blueprint §14.1). Merge requires approval.
-2. **Start M2 (data ingestion)?** It needs the **SEC User-Agent contact string**, stored in `.env` only, plus approval of new runtime dependencies:
-   - `httpx` (in the lock as a dev dependency; would become a backend runtime dependency);
-   - `procrastinate` (job queue, D2);
-   - `duckdb` (D8);
-   - `zstandard` (raw payload archive).
-3. **Off-server backup destination:** before production (M5).
-4. **Minecraft co-residency test:** deferred to M5. Do not start `minecraft.service`.
+**SEC User-Agent contact string.**
+- It must be the owner's real organisation or name plus contact email, e.g. the form `Company Name contact@company-domain`. **Do not invent one or use a placeholder.**
+- Once given, add it to `.env.dev` as `ERP_SEC_USER_AGENT=...`. Never commit it.
+- Then pass it through to the `worker` (and `api`) environment in `infra/compose.yaml` via `${ERP_SEC_USER_AGENT}`. That isn't wired yet, deliberately.
 
-## Exact next task (after decision 2)
+## Other open decisions
 
-**M2, Data ingestion** (Blueprint §4, §14.1). Start with:
-1. Add the `worker` service (D32) and the procrastinate schema migration.
-2. Archive raw provider payloads (SHA-256, zstd) and build the `source.*` tables.
-3. SEC adapter: ticker map, submissions, companyfacts. Rate limit 5 req/s. User-Agent from `.env`.
-4. Deterministic first/latest fact selection with `facts_as_of` (§4.4, D11), against trimmed real-payload fixtures.
+- Merge `m2-ingestion` into `main`: after the SEC adapter milestone, or now if preferred.
+- Off-server backup destination: before production (M5).
+- Minecraft co-residency test: deferred to M5. Do not start `minecraft.service`.
+
+## Exact next task (only after the User-Agent is provided)
+
+**SEC adapter + standardization foundation** (Blueprint §4.2–§4.4, D11, D12):
+1. Wire `ERP_SEC_USER_AGENT` into compose. Verify the gate accepts it: `python -m erp_backend.cli` check, no request yet.
+2. Migration `0004`: `market.companies`, `market.securities`, `market.company_identifiers`, `source.filings`, `source.reported_facts` (Blueprint §3.3).
+3. Adapter tasks on queue `ingestion`:
+   - ticker map (`company_tickers_exchange.json`, cached daily);
+   - submissions (profile);
+   - companyfacts.
+   Each goes through `fetch_and_archive`.
+4. Fact parser and deterministic first/latest selection with `facts_as_of` (D11). Interim-coverage detection (D12).
+5. Fixtures: trimmed real payloads fetched once through the adapter (AAPL, MSFT, SHOP, CNI, CNQ, RY). Tests stay offline using those fixtures.
 
 **Verification:**
-- AAPL, MSFT, SHOP, CNI and CNQ load with passing balance checks.
-- RY is classified `bank`.
-- Rebuilding a dataset from archived facts is byte-identical.
+- `make check` green.
+- Selection permutation tests pass.
+- Rebuilding from archived facts is byte-identical.
+- First live fetches stay at ≤ 5 req/s and are logged in `source.provider_fetches`.
 
 ## Prerequisites at startup
 
 ```bash
-git switch m1-engine && git status --short && git log --oneline -5
+git switch m2-ingestion && git status --short && git log --oneline -4
 make ps-dev || make up-dev
 make check
 ```
 
-Use `make` targets or `.tools/bin/uv run --all-packages …`. Run long jobs in the background. Golden outputs: after any deliberate calculation change, bump `erp_engine/version.py`, then run `ERP_UPDATE_GOLDEN=1 make test-engine`.
+Use `make` targets or `.tools/bin/uv run --all-packages …`. Run long jobs (image builds, `make up-dev`) in the background.

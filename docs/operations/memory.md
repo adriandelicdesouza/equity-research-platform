@@ -39,6 +39,21 @@ Findings:
 3. **Web far under its cap** at about 19 MiB peak.
 4. **Host:** MemAvailable stayed at or above 5.8 GiB throughout. Host swap shows 9 MiB used after the second run. Our containers can't swap (`memswap_limit` = `mem_limit`), so that comes from another process.
 
+### M2 preparation — 2026-11-06, dev stack with the `worker` service, Minecraft not running
+
+| Container | Limit | Idle (current) | Peak since start |
+|---|---|---|---|
+| web | 48 MiB | 10.1 | 13.0 |
+| api | 384 MiB | 63.9 | 131.0 (includes a one-off `docker exec … enqueue-ping` CLI process in the same cgroup) |
+| worker | 576 MiB | 36.4 | 72.4 (after processing a `system.ping` job) |
+| db | 576 MiB | 78.9 | 128.0 |
+| **Total** | **1,584 MiB** (all four services) | **189.3** | 344.4 |
+
+Findings:
+- **Worker:** idle at 36 MiB, against an estimate of ~120–200 MiB typical. DuckDB is not loaded until a task needs it (D40 contract).
+- **API:** idle memory unchanged by the new dependencies (63.9 vs 65.8 MiB at M0).
+- **Host:** host swap shows 19 MiB in use; our containers can't swap. Ingestion workloads will be measured with the SEC adapter.
+
 ### Still to measure
 
 - **Minecraft co-residency:** deferred to M5 by the owner (2026-11-06).

@@ -63,9 +63,9 @@ def test_migrations_upgrade_downgrade_upgrade(settings: Settings) -> None:
     try:
         engine = create_engine(database_url(settings, owner=True, database=name))
         migrate(name)
-        assert {"auth", "audit"} <= set(inspect(engine).get_schema_names())
+        assert {"auth", "audit", "jobs", "source"} <= set(inspect(engine).get_schema_names())
         migrate(name, "base", down=True)
-        assert not {"auth", "audit"} & set(inspect(engine).get_schema_names())
+        assert not {"auth", "audit", "jobs", "source"} & set(inspect(engine).get_schema_names())
         migrate(name)
         assert "users" in inspect(engine).get_table_names(schema="auth")
         engine.dispose()

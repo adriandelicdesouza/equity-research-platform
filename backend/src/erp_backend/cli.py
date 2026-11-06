@@ -49,6 +49,16 @@ def _create_user(args: argparse.Namespace) -> int:
     return 0
 
 
+def _enqueue_ping(message: str) -> int:
+    from erp_backend import tasks
+    from erp_backend.jobs import defer, sync_app
+
+    with sync_app().open() as queue:
+        job_id = defer(queue, tasks.ping.name, message=message)
+    print(f"queued system.ping job {job_id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -57,9 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     cu.add_argument("--display-name", required=True)
     cu.add_argument("--role", action="append", required=True, choices=[r.value for r in Role])
     cu.add_argument("--password-file")
+    ping = sub.add_parser("enqueue-ping", help="Queue a system.ping job (queue health check).")
+    ping.add_argument("--message", default="ping")
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
+    if args.command == "enqueue-ping":
+        return _enqueue_ping(args.message)
     return 2  # pragma: no cover
 
 

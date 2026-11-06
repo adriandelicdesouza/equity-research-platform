@@ -6,7 +6,7 @@ PY    := $(REPO)/.venv/bin/python
 DEV   := docker compose --env-file .env.dev -f infra/compose.yaml -f infra/compose.dev.yaml
 
 .PHONY: help tools setup env-dev secrets-dev data-dev up-dev down-dev ps-dev logs-dev \
-        build-dev create-admin-dev lint typecheck test test-backend test-engine test-frontend \
+        build-dev create-admin-dev enqueue-ping-dev lint typecheck test test-backend test-engine test-frontend \
         check measure-memory
 
 help:
@@ -27,7 +27,7 @@ secrets-dev:
 	infra/scripts/init-secrets.sh dev
 
 data-dev:
-	mkdir -p data/dev/postgres data/dev/caddy/data data/dev/caddy/config
+	mkdir -p data/dev/postgres data/dev/caddy/data data/dev/caddy/config data/dev/raw
 
 build-dev: env-dev
 	$(DEV) build
@@ -43,6 +43,9 @@ ps-dev:
 
 logs-dev:
 	$(DEV) logs --tail=100
+
+enqueue-ping-dev: ## queue health check: enqueue a system.ping job for the worker
+	$(DEV) exec api python -m erp_backend.cli enqueue-ping --message "queue check"
 
 create-admin-dev:  ## creates 'admin' with secrets/dev/initial_admin_password
 	$(DEV) run --rm --no-deps -v $(REPO)/secrets/dev/initial_admin_password:/run/secrets/initial_admin_password:ro \
