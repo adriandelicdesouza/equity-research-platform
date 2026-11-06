@@ -136,3 +136,30 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
     - Minor gap, not edited: the Blueprint §12.2 dev port row lists 8091 (+5173) but not the dev HTTPS port `127.0.0.1:8444` or DB `127.0.0.1:5433`. Both are documented in `docs/DEVELOPMENT.md` and D30, and both are loopback-only. No architectural change.
   - **Owner question asked and still unanswered:** permission for the Minecraft co-residency test.
 - **Owner decision (end of Session 2):** Minecraft co-residency test **deferred to M5**. Handoff files committed. The merge of `m0-foundation` into `main` is not yet confirmed.
+- **Merge:** `m0-foundation` → `main` with `--no-ff` (`0c42321`), owner-approved. `make check` green on `main`. Not pushed (no remote).
+- **M1 started** on branch `m1-engine`. Drafted `docs/methodology/dcf.md` (uncommitted, **DRAFT awaiting owner approval**). It covers every R1 DCF convention with Blueprint/decision traceability, plus 4 hand-worked benchmarks:
+  - B1: FCFF end-year, price 16.088182.
+  - B2: mid-period, stub Mode B, roll-forward, price 16.381688.
+  - B3: FCFE with leverage change, no bridge, price 14.683347.
+  - B4: TSM fixed point, P 19.5454545455.
+  - Benchmarks were computed with exact rationals and 50-digit decimals as a calculator; no engine code exists.
+- **Open owner questions:**
+  - Q1: Gordon TV timing under mid-period (D27). Default lowers EV 3.9% in B2; recommend following the cash-flow convention.
+  - Q2: default terminal FCF form (recommend value-driver with RONIC as a required assumption).
+- No implementation or installation performed after the draft; stopped for approval.
+
+## Session 3 — 2026-11-06
+
+- **Startup verification:** on branch `m1-engine`. `m0-foundation` fully merged into `main` (`0c42321`, identical trees). Uncommitted: methodology draft plus handoff updates, as recorded.
+- **Owner decision:** methodology draft **approved with recommendations**.
+  - Q1: Gordon TV timing follows the cash-flow convention. **D27 amended.**
+  - Q2: value-driver terminal form is the default, with RONIC a required assumption suggested = WACC. **New D35.**
+- **Changes:**
+  - `docs/methodology/dcf.md` marked APPROVED; §6.1/§6.2 updated; §15 converted to resolutions.
+  - B2 recomputed under amended D27: EV_B 1,997.414891, price 17.171458. The old values are kept as the "conservative override" row.
+  - New benchmark B1-VD (value-driver default): price 15.564694.
+  - B1/B2/B3 now state explicitly that they select the simple form. Recomputed with the same exact-arithmetic calculator method; no engine code.
+  - `DECISIONS.md`: D27 amended (superseded rule kept), D35 added.
+  - `TECHNICAL_BLUEPRINT.md`: two lines annotated (§7.4 TV timing, §7.6 default form) with pointers to D27/D35.
+- **Commit** on `m1-engine` (see `git log`). Not merged; not pushed (no remote).
+- **Next:** independent reference implementation. Needs owner approval to add dev dependencies `mpmath` and `import-linter`.
