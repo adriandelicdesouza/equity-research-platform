@@ -79,8 +79,8 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 | Risk | Status / mitigation |
 |---|---|
 | Single 128 GB SSD, no RAID | Off-server backup is a production gate (D7). The destination isn't chosen yet. |
-| RAM shared with game servers | Caps of about 1.6 GB. Memory figures are **estimates until measured** (M0/M5). Not yet tested with Minecraft running. |
-| Dev and prod can't run together with Minecraft | Run one environment at a time. |
+| RAM shared with game servers | Caps of about 1.6 GB. Memory figures are **estimates until measured** (M0/M5). Not yet tested with the game server running. |
+| Dev and prod can't run together while the game server runs | Run one environment at a time. |
 | Disk headroom: 64 GB free | Disk guard refuses bulk ingestion below 10 GB free. Docker images from other projects aren't pruned. |
 | Caddy internal CA | Clients must install the root certificate. If it's not trusted, browsers warn. |
 | Safari on `http://localhost` | Its handling of `Secure` cookies varies. The documented path is Chromium/Firefox, or the HTTPS listener. |
@@ -95,7 +95,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Rate limiter:** in-memory, so it resets when the API restarts.
 - **Memory under load:** concurrent logins are the API's largest memory consumer, because each Argon2 verification takes 19 MiB. See `docs/operations/memory.md`.
 - **Upstream warning:** a Starlette deprecation warning (`httpx` test client) appears in backend tests. It's harmless and will be revisited when FastAPI's test-client guidance settles.
-- **Minecraft co-residency:** not yet measured; deferred to M5 by the owner (2026-11-06).
+- **Game-server co-residency:** not yet measured; deferred to M5 by the owner (2026-11-06).
 
 ## 4b. Engine state (M1, Session 3)
 
@@ -118,13 +118,18 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 
 ## 5. Unresolved items
 
-1. SEC User-Agent contact string (needed for M2).
-2. Off-server backup destination (needed for production).
-3. Cloudflare hostname + Access policy (needed for remote access).
-4. Permission to start Minecraft for the co-residency test.
-5. Whether to bind the HTTPS listener to the LAN as well as Tailscale.
-6. Exact SIC ranges for classification still need checking against the SEC list (M2).
-7. Whether free total-return indices are available (to verify in M2).
+Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.
+
+1. ~~SEC User-Agent contact string~~: resolved (P1).
+2. Off-server backup destination: deferred to M5 (P2).
+3. Cloudflare hostname + Access policy: needed for remote access (P3).
+4. Permission to start the game server for the co-residency test: deferred to M5 (P4).
+5. Whether to bind the HTTPS listener to the LAN as well as Tailscale (P5).
+6. Exact SIC ranges for classification still need checking against the SEC list (M2, classifier step).
+7. Whether free total-return indices are available (to verify with the Yahoo provider, M2).
+8. **Not yet published:** `origin` exists (public, empty), but nothing is pushed, so there is still no off-machine copy of the code (P7, P12).
+9. ~~Commit author metadata contained the owner's Gmail~~: resolved by the history rewrites (D47).
+10. **No license** (P10): the code is all rights reserved by default.
 
 ## 6. Outside this project
 

@@ -24,8 +24,8 @@ Each decision lists the choice, why, the alternative rejected, and the trade-off
 
 ### D3. Memory hard caps total ~1.6 GB — Rev 2 (§1.2)
 - **Choice:** web 48 MB, api 384 MB, worker 576 MB, db 576 MB = 1,584 MB.
-- **Why:** Minecraft (`-Xmx3G`) can co-reside. About 0.9 GB margin is left for the OS and page cache.
-- **Process:** expected (estimated) and measured memory are recorded separately. Measured at M0 and M5. M5 includes a run with Minecraft running.
+- **Why:** An on-demand game server (~3.5 GB) can co-reside. About 0.9 GB margin is left for the OS and page cache.
+- **Process:** expected (estimated) and measured memory are recorded separately. Measured at M0 and M5. M5 includes a run with the co-resident game server running.
 - **Trade-off:**
   - api runs one uvicorn process.
   - Postgres runs with `shared_buffers=128MB`.
@@ -317,13 +317,36 @@ These refine the approved architecture. None changes an approved methodology dec
   - Country falls back to the incorporation code when the business address is absent. SEC code `Z4` = Canada (federal).
   - Reporting currency uses the latest periodic filing, falling back to interim forms for 6-K-only filers such as CNI. Registration forms (F-10) are ignored.
 
+## Public-release decisions (2026-11-06)
+
+### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
+- **Rewrite 1:** email → `contact@delicsouza.com`.
+- **Rewrite 2:** author name (former local username) → `Adrian Delic de Souza`, plus redaction of home-server infrastructure details from all historical versions of the affected docs.
+- **Scope:** all 4 branches. Messages, dates, parent structure and every non-documentation file are byte-identical.
+- **Backups and tooling:** verified backups of the state before each rewrite are kept outside the repository. Tool: `git-filter-repo` 2.47.0 in `.tools/`.
+- **Identity going forward:** the repository-local `user.email` is set; the global Git config was not changed by the agent.
+- **Consequence:** every commit hash changed. The mapping is in `SESSION_LOG.md`.
+
+### D48. Infrastructure details stay out of the repository
+- **Excluded:** host identity, hardware models, other services, ports, network topology, tunnel/VPN addresses and host-level security observations. These are not recorded in tracked files.
+- **What docs keep:** only the design constraints (resource budget, the app's own ports, isolation, remote-access approach).
+- **Enforcement:** `sanitize.py`'s `FORBIDDEN` list is the reference check before publication.
+
 ## Pending decisions (need your input)
 
-| # | Decision | Needed by |
+Status as of 2026-11-06 (end of Session 3).
+
+| # | Decision | Status / needed by |
 |---|---|---|
-| P1 | SEC User-Agent contact string (stored in `.env`) | M2 |
-| P2 | Off-server backup destination | M5 (production gate) |
-| P3 | Cloudflare tunnel hostname + Access policy | M5 (remote access) |
-| P4 | Start Minecraft for the co-residency test (you, or approve me) | M0 / M5 |
-| P5 | Optional: LAN binding; `tailscale serve` instead of internal CA | M0 |
-| P6 | Optional: registering free-key data providers | Release 3 |
+| P1 | SEC User-Agent contact string | **Resolved** 2026-11-06: owner-supplied, in git-ignored `.env.dev` only, passed to the worker only (D42, D45) |
+| P2 | Off-server backup destination | Open, **deferred**: needed at M5 (production gate) |
+| P3 | Cloudflare tunnel hostname + Access policy | Open: M5 (remote access) |
+| P4 | Start the co-resident game server for the co-residency test | Open, **deferred to M5** (owner instruction); never start it without approval |
+| P5 | Optional: LAN binding; `tailscale serve` instead of internal CA | Open, optional |
+| P6 | Optional: registering free-key data providers | Open: Release 3 |
+| P7 | **Git remote (backup/sync)**: `origin` = `adriandelicdesouza/equity-research-platform` (public, created by the owner, still empty). **Publication (push) awaits owner approval.** | Open: push requires owner approval (P12) |
+| P8 | **Git author identity** | **Resolved** 2026-11-06 (D47): history rewritten to `Adrian Delic de Souza <contact@delicsouza.com>`; repository-local `user.email` set |
+| P9 | Approval for the first live request to each new provider (Yahoo, US Treasury, Bank of Canada, Damodaran) | Open: before each provider's first live request (M2) |
+| P10 | **License**: none chosen. All rights reserved by default; public viewers may view/fork on GitHub but receive no reuse rights | Open: owner's choice before or after publication |
+| P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | Open: recommendation pending owner approval |
+| P12 | **Publication**: push of `main` and `m2-ingestion` to `origin` | Open: owner approval required |

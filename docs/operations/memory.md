@@ -16,7 +16,7 @@ The estimates come from Blueprint §1.2. They are kept as written and never over
 
 ## Measurements
 
-### M0 — 2026-11-06, dev stack (`erp-dev`), Minecraft not running
+### M0 — 2026-11-06, dev stack (`erp-dev`), game server not running
 
 Conditions:
 - Stack: `web`, `api`, `db`. No worker exists yet (D32).
@@ -39,7 +39,7 @@ Findings:
 3. **Web far under its cap** at about 19 MiB peak.
 4. **Host:** MemAvailable stayed at or above 5.8 GiB throughout. Host swap shows 9 MiB used after the second run. Our containers can't swap (`memswap_limit` = `mem_limit`), so that comes from another process.
 
-### M2 preparation — 2026-11-06, dev stack with the `worker` service, Minecraft not running
+### M2 preparation — 2026-11-06, dev stack with the `worker` service, game server not running
 
 | Container | Limit | Idle (current) | Peak since start |
 |---|---|---|---|
@@ -68,6 +68,6 @@ Findings:
 
 ### Still to measure
 
-- **Minecraft co-residency:** deferred to M5 by the owner (2026-11-06).
+- **Game-server co-residency:** deferred to M5 by the owner (2026-11-06).
 - **Worker (M2)**, and the **db with real financial datasets (M2)**.
 - **M5 acceptance workload** on the prod stack.

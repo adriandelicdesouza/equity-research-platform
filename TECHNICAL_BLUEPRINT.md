@@ -31,7 +31,7 @@ The platform is self-hosted on a small, shared home server. Only the characteris
 
 The server already runs several unrelated services (containers and system services, including on-demand game servers). Their details are intentionally not recorded in this repository. Design consequences:
 
-- **Memory:** an on-demand game server (Minecraft) can use ~3.5 GB RAM when running, leaving ~2.5 GB for everything else. The platform's combined container hard limits are therefore set to **~1.6 GB**, leaving ~0.9 GB of margin for the OS and page cache (§1.2).
+- **Memory:** an on-demand game server can use ~3.5 GB RAM when running, leaving ~2.5 GB for everything else. The platform's combined container hard limits are therefore set to **~1.6 GB**, leaving ~0.9 GB of margin for the OS and page cache (§1.2).
 - **Ports:** the platform uses its own loopback ports (**127.0.0.1:8090** prod, **127.0.0.1:8091** dev) plus an HTTPS listener (§11.1.1); availability was checked before allocation.
 - **Isolation:** the platform creates only its own Docker networks and never prunes or modifies other containers, images or services.
 - **Remote access** reuses the existing Cloudflare Tunnel/Access and Tailscale infrastructure; any change to them requires the owner's approval (§12.5).
@@ -126,7 +126,7 @@ At the start, the repository contained only `CLAUDE.md`, `MASTER_BRIEF.md`, `.gi
 - **Expected** figures are estimates from comparable stacks and configuration; they are **not measurements**. The **Measured** column is filled from `docker stats` and cgroup `memory.peak` at M0 (idle + synthetic load) and re-measured at M5 under the acceptance workload. Both columns are kept in `docs/operations/memory.md`; the estimate is never overwritten by the measurement.
 - Measured host baseline at inspection (2026-11-06): 1.4 GiB used, 6.2 GiB available, existing containers ≈ 60 MiB combined, systemd Python services ≈ 30–70 MiB each.
 - cgroup v2 `memory.max` counts reclaimable page cache; Postgres file cache beyond `shared_buffers` will be reclaimed under pressure rather than causing OOM, but limits are set so the steady state stays well below them.
-- **Minecraft co-residency test** (M0 and M5): run the acceptance workload while Minecraft runs and record host available memory, swap activity and per-container `memory.peak`. Starting Minecraft is starting an existing service, so **I will ask you to start it (or approve me starting and then stopping it)** at that point.
+- **Game-server co-residency test** (M0 and M5): run the acceptance workload while the game server runs and record host available memory, swap activity and per-container `memory.peak`. Starting the game server is starting an existing service, so **I will ask you to start it (or approve me starting and then stopping it)** at that point.
 - CPU: `cpus: 1.5` for `api`, `cpus: 1.0` for `worker` and `db`; worker has lower CPU weight (`cpu_shares`) so interactive requests win. All limits come from `.env` so they are tunable without code changes.
 - On a memory-limit breach the container is OOM-killed and restarted (`restart: unless-stopped`); jobs are idempotent and retried; the event is logged and surfaced on the Settings → System page.
 
@@ -922,7 +922,7 @@ postgres/  duckdb/  raw/  imports/  documents/  reports/  exports/  backups/  lo
 - `restart: unless-stopped`; health checks on every service (`pg_isready`, `/api/health` checking DB + queue, Caddy).
 - Postgres tuned for the hardware and its 576 MB cap: `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=4MB`, `maintenance_work_mem=64MB`, `max_connections=25` (api pool 8 + worker pool 4 + queue 3 + admin headroom).
 - Uvicorn: 1 process with threadpool (configurable); worker concurrency 1; DuckDB `memory_limit=192MB`, `threads=2`; daily sync jobs at off-hours with jitter.
-- Only one environment (dev or prod) runs at a time by default; running both doubles the footprint (~3.2 GB of caps) and is not supported with Minecraft running.
+- Only one environment (dev or prod) runs at a time by default; running both doubles the footprint (~3.2 GB of caps) and is not supported with the game server running.
 - Disk guard job: warn at 80% filesystem use, refuse bulk ingestion below 10 GB free; status shown in Settings.
 - Resource monitoring page: container memory/CPU from cgroup stats, DB size, data-root size.
 
@@ -943,7 +943,7 @@ postgres/  duckdb/  raw/  imports/  documents/  reports/  exports/  backups/  lo
 2. Registering free-tier API keys with any third-party provider.
 3. Binding the app to the LAN interface (vs localhost + Tailscale).
 4. **Off-server backup destination** (required before production acceptance) and, if cloud, account registration.
-5. Starting Minecraft (or having you start it) for the co-residency memory test.
+5. Starting the game server (or having you start it) for the co-residency memory test.
 6. Optional: `tailscale serve`/`cert` instead of Caddy's internal CA.
 
 ---
@@ -1008,7 +1008,7 @@ A reference that re-uses the engine's formulas in a different file only checks t
 | **M2 Data ingestion** | SEC adapter (ticker map, profile, companyfacts), raw archive, **deterministic first/latest selection with `facts_as_of`**, standardization mapping v1 (us-gaap + ifrs-full incl. lease and share-count items), **interim coverage detection (conditional 6-K)**, integrity checks, **conflict materiality + lock blocking**, dataset versions, **financial-business classifier**, Yahoo price adapter (symbol validation only), **manual TSX listing entry**, Treasury/BoC rates & FX, Damodaran reference datasets, Excel/CSV import template | AAPL, MSFT, SHOP, CNI, CNQ load end to end with ≥ 8–15 years and passing balance checks; RY classified `bank` and DCF blocked; a TSX-only company entered manually, symbol validated, financials imported via template |
 | **M3 Workflow UI** | Search / manual listing entry → company profile → financials (reported/standardized/adjusted, provenance badges, validation and conflicts panels, adjustments) → project → assumption panel (historical context, suggestion/approval, WACC build-up with ERP/CRP, beta diagnostics, lease and dilution settings) → DCF output → trace inspector | Playwright E2E: ticker to implied price, for a US and a TSX-only company |
 | **M4 Scenarios, sensitivity, persistence** | Base/bull/bear/custom with inheritance & probabilities, 1-D/2-D sensitivity, saved immutable runs, audit history UI, Excel export (values + provenance + engine version + output kinds) | Saved run re-executes to identical hash; export opens cleanly |
-| **M5 Release hardening** | Prod deployment, **off-server restic backup + restore drill from the off-server copy**, **memory re-measurement under acceptance workload with Minecraft running**, docs, `KNOWN_LIMITATIONS.md` updated | All brief §24.6 criteria met, plus the off-server backup and Minecraft co-residency gates |
+| **M5 Release hardening** | Prod deployment, **off-server restic backup + restore drill from the off-server copy**, **memory re-measurement under acceptance workload with the game server running**, docs, `KNOWN_LIMITATIONS.md` updated | All brief §24.6 criteria met, plus the off-server backup and game-server co-residency gates |
 
 Roadmap adjustments in Revision 2: FCFE moved from M4 to M1 (it shares the engine core and output-type work); manual TSX entry, classification, conflict handling and deterministic selection added to M2; memory measurement added to M0 and M5; off-server backup made an M5 gate. M1 grows the most — it is the highest-value milestone and is not shortened.
 
@@ -1022,7 +1022,7 @@ Roadmap adjustments in Revision 2: FCFE moved from M4 to M1 (it shares the engin
 7. Saved valuations are immutable, reproducible (identical output hash) and survive a restore **from the off-server backup**.
 8. Every number on the DCF page opens a trace to its inputs and sources.
 9. All engine benchmark, reference-agreement, property, edge-case and policy-guard tests pass.
-10. Production stack stays within its memory caps with Minecraft running; measured peaks recorded alongside estimates.
+10. Production stack stays within its memory caps with the game server running; measured peaks recorded alongside estimates.
 11. No saved valuation exists on a dataset with unresolved, un-overridden material conflicts.
 
 ### 14.2 Release 2 — Advanced modelling
