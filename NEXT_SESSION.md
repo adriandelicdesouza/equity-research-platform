@@ -1,80 +1,88 @@
 # Next Session Handoff
 
-**Updated:** 2026-11-06, end of Session 3 (after the public-release remediation). Authoritative entry point (`CLAUDE.md`). Details: `SESSION_LOG.md`, `DECISIONS.md`, `KNOWN_LIMITATIONS.md`.
+**Updated:** 2026-11-06, end of Session 3. Authoritative entry point (`CLAUDE.md`). Details: `SESSION_LOG.md` (chronology), `DECISIONS.md` (D1–D54), `KNOWN_LIMITATIONS.md` (§4c–§4i).
 
-## State at close (verified)
+## State at close (verified 2026-11-06)
 
-- **Branches:**
-  - **`main`** @ `9ef5594`: M0 + M1 (valuation engine), plus the LICENSE/README commit. Default branch on GitHub.
-  - **`m2-ingestion`** (current branch): M2 ingestion foundation + **SEC adapter (complete, do not rebuild)**. **Not merged.** Merging will conflict on `README.md`: keep the `m2-ingestion` version.
-  - Published state: see `SESSION_LOG.md` → "initial GitHub publication".
-- **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
-- **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
-- **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
-- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0010`, 6 SEC companies, 88,160 facts. Per company, a verified format-3 **draft** with conflicts: MSFT v4, others v3; earlier versions discarded. One demonstration resolution (MSFT FY2016 equity). None locked: locking is the analyst's call, and MSFT/RY/AAPL have open material conflicts. Classifier suggestions are stored (RY → bank, others → non_financial); none confirmed.
-- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52), classifier (D53), market-data boundary (D54). Pushing needs owner approval.
-- **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
+- **Branch `m2-ingestion` @ `7fb9bf3`**, working tree clean. **7 local commits, none pushed** (`origin/m2-ingestion` = `51cd1fa`):
+  - `0ddb473` docs: publication record
+  - `cccfc04` mapping v1 (D49)
+  - `2ecf98f` versioned datasets (D50)
+  - `23ff73c` integrity checks + derivations, mapping v2 (D51)
+  - `0f5ee7f` data conflicts (D52)
+  - `988f666` financial classification (D53)
+  - `7fb9bf3` market-data boundary + offline Yahoo adapter (D54)
+- **`main` @ `9ef5594`** (M0 + M1) is the GitHub default branch. A future merge will conflict on `README.md`: keep the `m2-ingestion` version.
+- **Dev stack stopped.** The DB (`data/dev/`) is at Alembic **`0010`**:
+  - 6 SEC companies, 88,160 facts;
+  - one verified format-3 draft per company (MSFT v4, others v3; 13 earlier versions discarded); **none locked**;
+  - open material conflicts: MSFT 6, RY 5, AAPL 6;
+  - 1 demonstration resolution (MSFT FY2016 equity);
+  - 6 classification suggestions (RY → bank, others → non_financial), **none confirmed**;
+  - 0 price observations.
+- **Providers in `source.providers`: all disabled, including `yahoo_chart`.** SEC uses its own User-Agent gate (`.env.dev`, worker only; never print or commit it).
 
-## Rules for this session (owner instructions)
+## Market-data milestone (D54): what is and isn't established
 
-- Keep all M2 work on `m2-ingestion`. **Do not merge, push or rewrite Git history** without explicit approval.
-- Don't change Git identity settings (the repository-local `user.email` is already `contact@delicsouza.com`).
-- **Keep home-server infrastructure details out of every tracked file (D48).** Before any commit, run the `FORBIDDEN` patterns from the backup `sanitize.py`.
-- **Ask for explicit approval before the first live request to each new provider** (P9).
-- Don't expose credentials or the SEC User-Agent email.
-- The off-server backup (P2) and the game-server co-residency test (P4) stay **deferred to M5**. Never start the game server without approval.
-- Run the complete `make check` at each milestone, and update `SESSION_LOG.md` / `NEXT_SESSION.md` as work progresses.
+| | Status |
+|---|---|
+| Provider-neutral types and protocol, `market/{model,adjust,store}.py` | Implemented, tested offline |
+| Yahoo adapter: symbol rule, request builder, gated client, parser | Implemented, tested on **synthetic** payloads only |
+| Close basis, `adjclose` method, dividend currency for Yahoo | **Unverified.** Stored as `unverified` / `assumed_quote_currency` |
+| Split methodology (basis = filing date; Π factors over basis < ex ≤ reference) | Implemented; Apple EPS regression on fixture values only |
+| Split-adjusted shares in dataset builds and EPS checks | **Not wired**; Apple EPS mismatches remain open |
+| Migration `0010` (append-only price observations, corporate actions, listings) | Applied in dev; tables empty |
 
-## Start-up sequence
+**Live Yahoo validation needs owner approval (P9) first.** Then: enable `yahoo_chart`, fetch AAPL 2013–2021 and RY.TO (optionally SHOP / SHOP.TO), settle the close basis with `infer_close_basis`, compare `recompute_adjusted_close` (0.5% flag), and only then wire split-adjusted shares into a new dataset format.
+
+## Next milestone: Excel/CSV import (Blueprint §4.6)
+
+**Read first:** Blueprint §4.6, §4.2 (`excel_import` / `csv_import`: "statements and prices from a documented template"), §3.3 (`source.imports`), §10.1 (provenance), D16 (manual CSV price import as the Yahoo fallback), D54, and `erp_backend/market/`. Note that §4.6 specifies mainly a **statement** template (line-item codes × fiscal periods, plus a metadata sheet). Settle the scope for market data (prices and corporate actions) against it before designing anything.
+
+**Facts already checked:**
+- `source.imports` does not exist yet (the blueprint defines it).
+- A `manual_import` provider row exists, disabled.
+- No spreadsheet library is in `uv.lock`. CSV works with the standard library; **`.xlsx` needs a new dependency, which needs owner approval**.
+
+**Scope for a vertical slice:**
+- documented, versioned template(s) and column mapping (`templates/`);
+- listing identification (security / ticker + MIC);
+- dates and time zones, currency, and **explicit close basis** (raw / split-adjusted / adjusted close, never substituted);
+- corporate actions where the template supports them;
+- row-level validation and rejection reasons; ambiguous rows rejected;
+- the original file stored hash-verified, with provenance on every row;
+- duplicate detection and idempotency (reuse the `0010` unique indexes);
+- a **preview / validate step before any permanent write**;
+- persistence through `market/store.py` (a `MarketDataProvider`-style parser);
+- offline unit tests and DB integration tests (`erp_test` only; no synthetic data in the dev DB).
+
+## Rules (owner instructions)
+
+- Work only on `m2-ingestion`. **No push, merge, rebase or history rewrite** without explicit approval.
+- **No network requests to any data provider and no provider activation** without explicit approval (P9).
+- Keep infrastructure details out of tracked files (D48): before any commit, run the `FORBIDDEN` patterns from the backup `sanitize.py` (path in local Claude memory).
+- Don't lock datasets or confirm classifications or conflicts on the owner's behalf.
+- Don't change Git identity settings. No new dependencies without approval.
+- `make check` at each milestone; update `SESSION_LOG.md` / `NEXT_SESSION.md`; stop the dev stack afterwards.
+
+## Start-up and validation
 
 ```bash
 cd ~/equity-research-platform
-git switch m2-ingestion && git status --short && git log --oneline -4   # expect 92e31ed on top
-make up-dev            # run as a background job; takes several minutes to build
-make check             # must be green before new work (backend tests need the dev DB)
-docker exec erp-dev-worker-1 python -m erp_backend.cli sec-check-config   # expect "configured"
+git switch m2-ingestion && git status --short && git log --oneline -1   # expect 7fb9bf3 (or the handoff commit)
+make up-dev        # background job; several minutes; applies migrations
+make check         # must pass: backend 308, engine 109, frontend 2
+make down-dev      # when finished
 ```
 
-Then ask the owner about the open decisions below. Only the commit question matters before starting work.
+## Useful commands (all `docker exec erp-dev-worker-1 python -m erp_backend.cli …`)
 
-## Remaining M2 work, in order (Blueprint §4–§5, §10.3, §14.1)
+- **Datasets:** `dataset-build --ticker T`, `dataset-list`, `dataset-verify --id`, `dataset-lock --id --reason`, `dataset-rebuild --ticker --reason`.
+- **Conflicts:** `conflict-list --id [--all]`, `conflict-resolve --id --key (--select F | --value V --source S | --override | --revoke) --reason`.
+- **Classification:** `classify --ticker T`, `classification-confirm --ticker --class --reason`.
+- **SEC:** `sec-standardize-report --ticker T`, `sec-rebuild-from-archive`.
+- **Tooling:** `.tools/bin/uv run --all-packages …` (plain `uv run` drops the workspace packages). After an intended engine calculation change, run `ERP_UPDATE_GOLDEN=1 make test-engine`.
 
-1. ~~SEC concept → standard statement mapping (v1)~~ **done** (D49). `mappings/v1/` is frozen (hash pinned in `0005`); changes go into `v2/` with a new migration. Gaps per company: KNOWN_LIMITATIONS §4d.
-2. ~~Versioned financial datasets~~ **done** (D50): `erp_backend.datasets` (service), `standardization/{periods,dataset}.py` (pure), migration `0006`, CLI `dataset-build|list|verify|lock|discard`. Limitations: KNOWN_LIMITATIONS §4e.
-3. ~~Balance and consistency checks; derivations~~ **done** (D51): `standardization/{validation,derivations}.py`, `fin.validation_results`, mapping v2 (`CF.FCF`), migration `0007`. Real findings (splits, mixed vintages, RY EPS numerator): KNOWN_LIMITATIONS §4f.
-4. ~~Data-conflict detection and handling~~ **done** (D52): `standardization/conflicts.py`, `fin.data_conflicts`, `fin.conflict_resolutions`, migration `0008`, CLI `conflict-list`, `conflict-resolve`, `dataset-rebuild`. Limitations: KNOWN_LIMITATIONS §4g.
-5. ~~Financial-business classification~~ **done** (D53): `classification.py` (pure), `classifications.py` (service), migration `0009`, CLI `classify`, `classification-confirm`. Open: bank template for interim coverage, auto-suggest after ingestion (KNOWN_LIMITATIONS §4h).
-6. **Yahoo Finance (unofficial chart endpoint)**: offline part **done** (D54): `erp_backend/market/` (model, Yahoo adapter, adjustments, store) and migration `0010`; `yahoo_chart` still disabled. **Next, and only with owner approval (P9):** enable the provider, fetch a few symbols (e.g. AAPL across the 2014/2020 splits, RY.TO), settle the close basis with `infer_close_basis`, compare `recompute_adjusted_close`, then wire split-adjusted shares into datasets and add the TSX manual-listing CLI.
-7. **US Treasury** par yield curve (§4.2). **Ask approval first.**
-8. **Bank of Canada** Valet: GoC yields and FX (§4.2). **Ask approval first.**
-9. **Damodaran** reference datasets (ERP, CRP, betas, spreads) as `suggested` values (§4.2, §10.1). **Ask approval first.**
-10. **Excel/CSV import** template and importer (§4.6), with a hash-stored original file.
+## Remaining M2 after the import
 
-**M2 exit criteria (Blueprint §14.1):**
-- AAPL, MSFT, SHOP, CNI and CNQ load with ≥ 8–15 years and passing balance checks.
-- RY is classified `bank`.
-- A TSX-only company is entered manually, its symbol validated, and its financials imported via template.
-- Dataset rebuild is byte-identical.
-- `make check` green.
-
-Then request owner review, and only after approval, the merge to `main`.
-
-## Open owner decisions (`DECISIONS.md` → Pending)
-
-- The repository is **public**: anything committed and pushed is published. Keep the D48 rules.
-- **P9:** first live request per new provider (items 6–9).
-- **Host security follow-up:** the owner holds a separate host-security checklist, kept outside this repository. It concerns host configuration, which is out of scope: don't change it.
-- P2/P4 deferred to M5; P3/P5/P6 later.
-
-## Useful commands
-
-- **Tooling:** `make` targets, or `.tools/bin/uv run --all-packages …`. Plain `uv run` removes the workspace packages.
-- **SEC:**
-  - enqueue: `docker exec erp-dev-api-1 python -m erp_backend.cli sec-ingest --ticker XYZ`
-  - rebuild without network: `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-rebuild-from-archive`
-- **Classification:** `classify --ticker RY`, then `classification-confirm --ticker RY --class bank --reason "…"` (analyst decision).
-- **Conflicts:** `conflict-list --id DATASET [--all]`, then `conflict-resolve --id DATASET --key KEY (--select FACT | --value V --source S | --override | --revoke) --reason "…"`. This rebuilds the draft.
-- **Datasets:** `docker exec erp-dev-worker-1 python -m erp_backend.cli dataset-build --ticker AAPL`, then `dataset-verify --id …`, `dataset-lock --id … --reason …`.
-- **Mapping coverage:** `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-standardize-report --ticker AAPL [--all] [--as-of YYYY-MM-DD]`.
-- **Memory:** `make measure-memory LABEL="…"`. Results go in `docs/operations/memory.md`.
-- **Engine golden outputs:** after any intended calculation change, bump `erp_engine/version.py`, then run `ERP_UPDATE_GOLDEN=1 make test-engine`.
+Live Yahoo validation, US Treasury, Bank of Canada, Damodaran (each needs approval first), then the M2 exit criteria (Blueprint §14.1), owner review and the merge to `main`.

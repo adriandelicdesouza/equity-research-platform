@@ -454,3 +454,23 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - batched inserts reported `rowcount = -1` (insert counts now use `RETURNING`).
 - **Dev DB:** migrated `0009 → 0010`; the new tables are empty. Synthetic test data went only into the disposable `erp_test` database.
 - **Tests:** 38 new (backend 270 → 308), including an Apple EPS split regression on fixture values. The stored datasets are unchanged.
+
+### Session 3 close — handoff (2026-11-06)
+
+- **Verified:**
+  - `m2-ingestion` @ `7fb9bf3`, working tree clean; 7 commits ahead of `origin/m2-ingestion` (`51cd1fa`), none pushed.
+  - Dev stack stopped; started the DB container alone to check state, then stopped it.
+  - Alembic `0010`; every provider disabled, `yahoo_chart` included.
+  - Datasets: 6 drafts, 13 discarded, none locked; 1 conflict resolution; 6 classification suggestions, none confirmed; 0 price observations.
+- **`NEXT_SESSION.md` rewritten** as a compact entry point:
+  - the state above;
+  - the D54 status table (implemented vs tested offline vs verified);
+  - the live Yahoo validation steps, which need approval;
+  - the next milestone: Excel/CSV import under Blueprint §4.6, after reviewing §4.6/§4.2/§3.3 and D16;
+  - the rules and start-up commands.
+
+  Removed stale items: a pre-rewrite start-up hash and old commit notes.
+- **Next-milestone facts checked:**
+  - `source.imports` is not created yet;
+  - the `manual_import` provider row exists (disabled);
+  - no spreadsheet library is locked, so `.xlsx` needs owner approval for a dependency.
