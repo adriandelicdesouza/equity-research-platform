@@ -114,7 +114,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
 - **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
 - **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
-- **Not built yet:** derivations other than Q4, integrity checks, conflict records and the classifier. These are the next M2 steps. Concept mapping v1 (D49) and versioned datasets (D50) exist.
+- **Not built yet:** conflict records and their resolution, and the classifier. These are the next M2 steps. Mapping (D49), versioned datasets (D50), integrity checks and derivations (D51) exist.
 
 ## 4d. Standardization mapping v1 (M2)
 
@@ -127,12 +127,33 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 
 ## 4e. Versioned datasets (M2)
 
-- **Derived values:** only Q4 = FY − 9M exists. Quarterly cash-flow amounts (10-Q cash flows are year-to-date), gross profit, EBITDA, SG&A sums, net debt and FCF are not derived yet. LTM and stub periods are not built.
+- **Derived values:** see §4f. Stub periods are not built.
 - **Gaps stay gaps:** a fiscal year with no reported annual window (e.g. CNI 2021 in the stored facts) is absent, not interpolated. Values on dates that are not period ends, and windows before the first known fiscal year, are counted as unassigned in the dataset summary.
 - **Fiscal-year changes:** overlapping annual windows keep the better-supported one. Transition periods (10-KT) are not modelled.
 - **Conflicts:** within-filing ambiguity blocks locking. Cross-provider conflict records (`fin.data_conflicts`, §10.3) and their resolution/override workflow are not built yet, so ambiguous values cannot be resolved in-app yet.
 - **Cut-off granularity:** `facts_as_of` is a date (SEC filing dates carry no time). A filing ingested later with the same filing date as the cut-off would change a rebuild; verification reports this as an input change (`input_sha256`).
-- **Approval:** locking checks reproducibility and ambiguity only. The §5.3 integrity checks and the analyst-override rule are a later step.
+- **Approval:** locking checks reproducibility and ambiguity. Integrity checks are recorded (§4f) but gate nothing yet; the approval-for-valuation gate with override reasons belongs to the valuation workflow.
+
+## 4f. Integrity checks and derived values (M2)
+
+- **Not evaluable is common** where companies don't tag an input:
+  - The net income split needs an NCI line, and most companies without NCI don't tag one.
+  - SG&A's children (S&M, G&A) are often missing.
+  - Apple reports no FX-effect line, so its cash roll-forward is never evaluated.
+
+  These are reported as `not_evaluable`, never assumed to be zero.
+- **Real findings the checks surface:**
+  - **Stock splits (AAPL):** latest-reported EPS is restated for the 2014 7:1 and 2020 4:1 splits, while the weighted share counts from the original filings are not. EPS × shares then misses net income by the split factor.
+  - **Concept definitions:** Apple's IS `DepreciationAndAmortization` is smaller than its CF D&A concept.
+  - **Restricted cash:** the cash-flow statement includes it and the balance sheet line doesn't (warning).
+  - **Mixed filing vintages:** latest-reported selection works per fact. When a later filing restates some balance-sheet lines but not others, the selected values come from different vintages and don't tie. Examples: MSFT FY2016–Q3 FY2017 assets and equity were restated but liabilities weren't (balance off by about $11–14B); RY 2023 Q1–Q3 equity against equity + NCI is off by about C$2.4B. Consistent vintages need the conflict workflow (§10.3) or a first-reported dataset.
+  - **EPS numerator with preferred shares (RY):** EPS uses net income after preferred dividends, but `IS.NET_INCOME_COMMON` is "attributable to the parent", which includes preferred holders. EPS checks fail by the preferred dividends. A dedicated "available to common" line item needs mapping v3.
+
+  Split-adjusting share counts needs corporate actions, which arrive with the Yahoo provider.
+- **Tolerances** follow Blueprint §5.3. 0.1% of total assets is generous for small income-statement items in large balance sheets; thresholds are constants in `validation.py`, not yet configurable.
+- **Derived values** are not re-checked against reported totals. Quarterly flows (Q2/Q3/Q4) are consistent with their year-to-date inputs by construction.
+- **Not derived:** net debt, interest-bearing debt totals, total liabilities from L&E − equity, and quarterly balance-sheet items for Q4 (it equals the FY balance sheet). LTM exists only at Q1/H1/9M ends with the same concept in all three inputs.
+- **Free cash flow** is the simple CFO + capex (`CF.FCF`, mapping v2), not FCFF/FCFE (computed by the engine from forecasts).
 
 ## 5. Unresolved items
 

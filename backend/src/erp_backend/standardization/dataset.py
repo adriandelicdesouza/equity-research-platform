@@ -26,14 +26,17 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
 from typing import Any
 
 from erp_backend.ingestion import coverage
 from erp_backend.ingestion.sec_parse import RawFact
 from erp_backend.ingestion.selection import Policy, select
+from erp_backend.standardization.dataset_types import DatasetValue, decimal_str
+
+__all__ = ["DatasetValue", "decimal_str"]  # re-exported for callers of this module
+from erp_backend.standardization.derivations import derive
 from erp_backend.standardization.mapping import MappingSet
 from erp_backend.standardization.periods import (
     FiscalCalendar,
@@ -42,58 +45,18 @@ from erp_backend.standardization.periods import (
     resolve_periods,
 )
 from erp_backend.standardization.resolve import StandardValue, resolve
+from erp_backend.standardization.validation import CheckResult, summarize, validate
+from erp_backend.standardization.validation import sha256 as validation_sha256
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2  # 2: YTD quarters, formulas and LTM (D51)
 ANNUAL_REPORT_FORMS = frozenset({"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"})
 DATASET_FORMS = ANNUAL_REPORT_FORMS | coverage.INTERIM_FORMS
-Q4_RULE = "Q4=FY-9M"
 # Which period a balance-sheet date attaches to when several end on it: FY first.
-PERIOD_RANK = {"FY": 0, "Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "H1": 2, "9M": 2}
+PERIOD_RANK = {"FY": 0, "Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "H1": 2, "9M": 2, "LTM": 3}
 
 
 class DatasetBuildError(ValueError):
     pass
-
-
-def decimal_str(value: Decimal) -> str:
-    """Canonical decimal text: no exponent, no trailing zeros, no negative zero."""
-    if value == 0:
-        return "0"
-    return format(value.normalize(), "f")
-
-
-@dataclass(frozen=True)
-class DatasetValue:
-    period: FiscalPeriod
-    line_item: str
-    status: str  # ok | ambiguous
-    value: Decimal | None
-    unit: str
-    provenance: str  # reported | derived
-    concept: str
-    priority: int
-    sign: int
-    source_fact_ids: tuple[int, ...]
-    detail: Mapping[str, Any] = field(default_factory=dict)  # JSON-native values only
-
-    def sort_key(self) -> tuple[Any, ...]:
-        return (*self.period.sort_key(), self.line_item)
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "period": [self.period.period_type, self.period.start.isoformat(),
-                       self.period.end.isoformat()],
-            "line_item": self.line_item,
-            "status": self.status,
-            "value": None if self.value is None else decimal_str(self.value),
-            "unit": self.unit,
-            "provenance": self.provenance,
-            "concept": self.concept,
-            "priority": self.priority,
-            "sign": self.sign,
-            "source_fact_ids": list(self.source_fact_ids),
-            "detail": dict(self.detail),
-        }  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -105,10 +68,13 @@ class DatasetHeader:
     selection_policy: str
     facts_as_of: date
     input_sha256: str
+    # The serialization format the dataset was built with; stored rows of an older
+    # version must re-serialize with their own format, not the code's current one.
+    format_version: int = FORMAT_VERSION
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "format": FORMAT_VERSION,
+            "format": self.format_version,
             "mapping_version": self.mapping_version,
             "mapping_sha256": self.mapping_sha256,
             "taxonomy": self.taxonomy,
@@ -150,6 +116,11 @@ class BuiltDataset:
     values: tuple[DatasetValue, ...]
     interim_coverage: str
     summary: Mapping[str, Any]
+    checks: tuple[CheckResult, ...] = ()
+
+    @property
+    def validation_sha256(self) -> str:
+        return validation_sha256(self.checks)  # module-level function of the same name
 
     @property
     def canonical(self) -> bytes:
@@ -187,60 +158,6 @@ def _reported(
         source_fact_ids=(fact_ids[v.source],) if v.source is not None else (),
         detail=detail,
     )
-
-
-def _derive_q4(
-    by_key: Mapping[tuple[int, str, str], DatasetValue],
-    calendar: FiscalCalendar,
-    mapping: MappingSet,
-    skipped: Counter[str],
-) -> list[DatasetValue]:
-    out = []
-    reported_q4 = {(fy, code) for (fy, ptype, code) in by_key if ptype == "Q4"}
-    for fy in calendar.years:
-        for code, item in mapping.line_items.items():
-            if item.value_type != "flow" or item.period != "duration":
-                continue
-            full = by_key.get((fy.fiscal_year, "FY", code))
-            nine = by_key.get((fy.fiscal_year, "9M", code))
-            if full is None or nine is None or (fy.fiscal_year, code) in reported_q4:
-                continue
-            if full.status != "ok" or nine.status != "ok":
-                skipped["ambiguous_input"] += 1
-                continue
-            if (full.concept, full.sign) != (nine.concept, nine.sign):
-                skipped["concept_mismatch"] += 1
-                continue
-            if nine.period.start != fy.start or nine.period.end >= fy.end:
-                skipped["window_mismatch"] += 1
-                continue
-            assert full.value is not None and nine.value is not None
-            q4_start = date.fromordinal(nine.period.end.toordinal() + 1)
-            q4 = FiscalPeriod(fy.fiscal_year, "Q4", q4_start, fy.end)
-            out.append(
-                DatasetValue(
-                    period=q4,
-                    line_item=code,
-                    status="ok",
-                    value=full.value - nine.value,
-                    unit=full.unit,
-                    provenance="derived",
-                    concept=full.concept,
-                    priority=full.priority,
-                    sign=full.sign,
-                    source_fact_ids=full.source_fact_ids + nine.source_fact_ids,
-                    detail={
-                        "rule": Q4_RULE,
-                        "fy": decimal_str(full.value),
-                        "nine_months": decimal_str(nine.value),
-                        "accessions": [
-                            full.detail.get("accession"),
-                            nine.detail.get("accession"),
-                        ],
-                    },
-                )
-            )
-    return out
 
 
 def build(
@@ -300,9 +217,7 @@ def build(
             continue
         values.append(_reported(v, target, facts))
 
-    by_key = {(v.period.fiscal_year, v.period.period_type, v.line_item): v for v in values}
-    skipped: Counter[str] = Counter()
-    derived = _derive_q4(by_key, calendar, mapping, skipped)
+    derived, by_rule, skipped = derive(values, calendar.years, mapping)
     values.extend(derived)
     values.sort(key=DatasetValue.sort_key)
     periods = sorted({v.period for v in values}, key=FiscalPeriod.sort_key)
@@ -324,10 +239,13 @@ def build(
         "unassigned_values": dict(sorted(unassigned.items())),
         "rejected_annual_windows": [[s.isoformat(), e.isoformat()] for s, e in calendar.rejected],
         "conflicting_windows": [[s.isoformat(), e.isoformat()] for s, e in conflicting],
-        "q4_not_derived": dict(sorted(skipped.items())),
+        "derived_by_rule": dict(sorted(by_rule.items())),
+        "not_derived": dict(sorted(skipped.items())),
     }
+    checks = validate(values, mapping, currency)
+    summary["validation"] = summarize(checks)
     level = coverage.detect(list(eligible)).level
-    return BuiltDataset(header, tuple(periods), tuple(values), level, summary)
+    return BuiltDataset(header, tuple(periods), tuple(values), level, summary, tuple(checks))
 
 
 def value_key(v: DatasetValue) -> tuple[str, str, str, str]:

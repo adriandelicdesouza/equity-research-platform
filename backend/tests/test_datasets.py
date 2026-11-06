@@ -25,6 +25,7 @@ from erp_backend.models import (
     FinancialValue,
     FiscalPeriodRow,
     ReportedFact,
+    ValidationResult,
 )
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -33,8 +34,8 @@ from sqlalchemy.orm import Session
 ROOT = Path(__file__).resolve().parents[2] / "mappings"
 
 
-def build(db: Session, company: Company, **kw: object) -> BuildResult:
-    return build_dataset(db, company, mappings_root=ROOT, mapping_version="v1", **kw)  # type: ignore[arg-type]
+def build(db: Session, company: Company, version: str = "v1", **kw: object) -> BuildResult:
+    return build_dataset(db, company, mappings_root=ROOT, mapping_version=version, **kw)  # type: ignore[arg-type]
 
 
 def add_facts(db: Session, company: Company, rows: list[tuple]) -> None:  # type: ignore[type-arg]
@@ -299,6 +300,12 @@ def test_company_without_standard_is_rejected(db: Session) -> None:
         ("UPDATE fin.financial_datasets SET value_count = 0 WHERE id = :i", "immutable"),
         ("UPDATE fin.fiscal_periods SET fiscal_year = 1999", "append-only"),
         ("TRUNCATE fin.financial_values", "append-only"),
+        (
+            "UPDATE fin.validation_results SET status = 'passed' WHERE dataset_id = :i",
+            "never updated",
+        ),
+        ("DELETE FROM fin.validation_results WHERE dataset_id = :i", "immutable"),
+        ("UPDATE fin.financial_datasets SET validation_sha256 = NULL WHERE id = :i", "immutable"),
     ],
 )
 def test_triggers_bind_the_owner_role_too(owner_engine: Engine, statement: str, error: str) -> None:
@@ -321,3 +328,128 @@ def test_triggers_bind_the_owner_role_too(owner_engine: Engine, statement: str, 
         session.close()
         trans.rollback()
         conn.close()
+
+
+# ---- Integrity checks (D51) ------------------------------------------------------------------
+
+
+def _results(db: Session, dataset_id: uuid.UUID) -> list[ValidationResult]:
+    return list(
+        db.scalars(select(ValidationResult).where(ValidationResult.dataset_id == dataset_id))
+    )
+
+
+def test_build_runs_and_stores_integrity_checks(db: Session, company: Company) -> None:
+    add_facts(
+        db,
+        company,
+        [
+            ("Liabilities", "3000", None, FY24[1], *K24),
+            ("StockholdersEquity", "1990", None, FY24[1], *K24),  # 10 short of assets
+        ],
+    )
+    d = build(db, company).dataset
+    rows = _results(db, d.id)
+    assert d.validation_sha256 is not None and rows
+    assert sum(d.source_summary["validation"]["by_check"]["COMPLETENESS"].values()) == 11
+    balance = next(r for r in rows if r.check_code == "BALANCE")
+    period = db.get(FiscalPeriodRow, balance.period_id)
+    assert period is not None and (period.period_type, period.end_date) == ("FY", FY24[1])
+    assert (balance.status, balance.expected, balance.actual) == (
+        "passed",  # |−10| ≤ max(0.1% × 5000, reporting precision 10)
+        Decimal("5000"),
+        Decimal("4990"),
+    )
+    assert balance.difference == Decimal("-10") and balance.tolerance == Decimal("10")
+    assert balance.inputs["values"]["BS.TOTAL_ASSETS"]["fact_ids"]
+    completeness = [r for r in rows if r.check_code == "COMPLETENESS"]
+    assert all(r.period_id is None and r.status == "failed" for r in completeness)
+    check = verify_dataset(db, d, mappings_root=ROOT)
+    assert check.validation_matches and check.ok
+
+
+def test_failed_checks_are_recorded_but_do_not_lock_or_block_locking(
+    db: Session, company: Company
+) -> None:
+    add_facts(
+        db,
+        company,
+        [
+            ("Liabilities", "1000", None, FY24[1], *K24),
+            ("StockholdersEquity", "1000", None, FY24[1], *K24),  # assets 5000: fails
+        ],
+    )
+    d = build(db, company).dataset
+    assert d.status == "draft"  # validation never locks
+    balance = next(r for r in _results(db, d.id) if r.check_code == "BALANCE")
+    assert balance.status == "failed" and balance.severity == "error"
+    assert d.source_summary["validation"]["failed_errors"] >= 1
+    lock_dataset(db, d.id, mappings_root=ROOT, reason="analyst accepts: balance gap reviewed")
+    event = db.scalars(select(AuditEvent).where(AuditEvent.action == "dataset_locked")).one()
+    assert event.after["validation"]["by_check"]["BALANCE"]["failed"] == 1  # type: ignore[index]
+
+
+def test_tampered_check_results_are_detected(db: Session, company: Company) -> None:
+    d = build(db, company).dataset
+    db.execute(
+        text("DELETE FROM fin.validation_results WHERE dataset_id = :i AND check_code = 'BALANCE'"),
+        {"i": d.id},
+    )
+    check = verify_dataset(db, d, mappings_root=ROOT)
+    assert not check.validation_matches and check.stored_matches
+    with pytest.raises(DatasetError, match="failed verification"):
+        lock_dataset(db, d.id, mappings_root=ROOT, reason="x")
+
+
+def test_discard_removes_check_results(db: Session, company: Company) -> None:
+    d = build(db, company).dataset
+    assert _results(db, d.id)
+    discard_dataset(db, d.id, reason="test")
+    assert _results(db, d.id) == []
+
+
+def test_v2_dataset_stores_free_cash_flow_and_ltm(db: Session, company: Company) -> None:
+    nine23 = (date(2023, 1, 1), date(2023, 9, 30))
+    q23 = ("10-Q", date(2023, 11, 1), "0000000001-23-000003")
+    add_facts(
+        db,
+        company,
+        [
+            ("Revenues", "760", *nine23, *q23),
+            ("NetCashProvidedByUsedInOperatingActivities", "300", *FY24, *K24),
+        ],
+    )
+    d = build(db, company, "v2").dataset
+    rows = {
+        (v.line_item_code, p.period_type): (v, p)
+        for v, p in db.execute(
+            select(FinancialValue, FiscalPeriodRow)
+            .join(FiscalPeriodRow, FiscalPeriodRow.id == FinancialValue.period_id)
+            .where(FinancialValue.dataset_id == d.id)
+        ).all()
+    }
+    fcf, _ = rows[("CF.FCF", "FY")]
+    assert fcf.value == Decimal("210") and fcf.provenance_kind == "derived"  # 300 + (−90)
+    assert fcf.detail["rule"] == "CF.FCF=+CF.CFO+CF.CAPEX" and fcf.mapping_version == "v2"
+    ltm, ltm_period = rows[("IS.REVENUE", "LTM")]
+    # LTM to 2024-09-30 = FY2023 1000 + 9M2024 850 − 9M2023 760
+    assert ltm.value == Decimal("1090")
+    assert (ltm_period.start_date, ltm_period.end_date) == (date(2023, 10, 1), date(2024, 9, 30))
+    assert verify_dataset(db, d, mappings_root=ROOT).ok
+
+
+def test_older_format_datasets_reserialize_with_their_own_format() -> None:
+    """Stored rows are verified with the format recorded on the dataset (D51)."""
+    from datetime import date as d
+
+    from erp_backend.datasets import header_of
+    from erp_backend.standardization.dataset import FORMAT_VERSION, canonical_bytes
+
+    old = FinancialDataset(
+        mapping_version="v1", mapping_sha256="0" * 64, taxonomy="us-gaap", currency="USD",
+        selection_policy="latest_reported", facts_as_of=d(2025, 1, 1), input_sha256="1" * 64,
+        format_version=1,
+    )  # fmt: skip
+    header = header_of(old)
+    assert header.as_dict()["format"] == 1 != FORMAT_VERSION
+    assert b'"format":1' in canonical_bytes(header, [], [])

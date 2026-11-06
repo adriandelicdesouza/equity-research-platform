@@ -11,6 +11,10 @@ enforced by database triggers (migration 0006), so this module cannot bypass the
 * ``verify_dataset`` re-serializes the stored rows and rebuilds from the facts with the
   recorded parameters; both must reproduce ``content_sha256`` byte for byte.
 * ``lock_dataset`` requires a successful verification and no ambiguous values (D13).
+  Failed integrity checks (D51) do not block locking: they are recorded with the dataset
+  and gate approval for valuation, which remains the analyst's decision.
+* Integrity checks run on every build; their results are stored with the draft
+  (``fin.validation_results``) and fingerprinted (``validation_sha256``).
 """
 
 from __future__ import annotations
@@ -33,9 +37,11 @@ from erp_backend.models import (
     FinancialValue,
     FiscalPeriodRow,
     ReportedFact,
+    ValidationResult,
 )
 from erp_backend.standardization import dataset as ds
 from erp_backend.standardization import mapping as mapping_mod
+from erp_backend.standardization import validation as checks_mod
 from erp_backend.standardization.periods import FiscalPeriod
 from erp_backend.standardization.resolve import taxonomy_for_standard
 
@@ -153,6 +159,7 @@ def header_of(dataset: FinancialDataset) -> ds.DatasetHeader:
         dataset.selection_policy,
         dataset.facts_as_of,
         dataset.input_sha256,
+        dataset.format_version,
     )
 
 
@@ -207,7 +214,11 @@ def build_dataset(
     mapping = mapping_mod.load(mappings_root, mapping_version)
     built = _build(db, company, mapping, policy, facts_as_of)
     current = _current(db, company.id)
-    if current is not None and current.content_sha256 == built.content_sha256:
+    if (
+        current is not None
+        and current.content_sha256 == built.content_sha256
+        and current.validation_sha256 == built.validation_sha256
+    ):
         return BuildResult(current, created=False)
     if current is not None and current.status == "draft":
         raise DatasetError(
@@ -249,6 +260,7 @@ def build_dataset(
         format_version=ds.FORMAT_VERSION,
         input_sha256=h.input_sha256,
         content_sha256=built.content_sha256,
+        validation_sha256=built.validation_sha256,
         interim_coverage=built.interim_coverage,
         value_count=len(built.values),
         source_summary=summary,
@@ -279,6 +291,27 @@ def build_dataset(
             for v in built.values
         ],
     )
+    db.bulk_insert_mappings(
+        ValidationResult,
+        [
+            {
+                "dataset_id": dataset.id,
+                "check_code": r.check_code,
+                "subject": r.subject,
+                "period_id": period_ids[r.period] if r.period is not None else None,
+                "severity": r.severity,
+                "status": r.status,
+                "expected": r.expected,
+                "actual": r.actual,
+                "difference": r.difference,
+                "tolerance": r.tolerance,
+                "unit": r.unit,
+                "message": r.message,
+                "inputs": dict(r.inputs),
+            }
+            for r in built.checks
+        ],
+    )
     audit.record(
         db,
         action="dataset_created",
@@ -294,6 +327,8 @@ def build_dataset(
             "selection_policy": h.selection_policy,
             "facts_as_of": h.facts_as_of.isoformat(),
             "values": len(built.values),
+            "validation_sha256": built.validation_sha256,
+            "validation": built.summary["validation"],
             "parent_dataset_id": str(parent.id) if parent else None,
         },
     )
@@ -301,32 +336,74 @@ def build_dataset(
     return BuildResult(dataset, created=True)
 
 
+def stored_checks(db: Session, dataset: FinancialDataset) -> list[checks_mod.CheckResult]:
+    rows = db.execute(
+        select(ValidationResult, FiscalPeriodRow)
+        .outerjoin(FiscalPeriodRow, FiscalPeriodRow.id == ValidationResult.period_id)
+        .where(ValidationResult.dataset_id == dataset.id)
+    ).all()
+    return [
+        checks_mod.CheckResult(
+            check_code=r.check_code,
+            subject=r.subject,
+            period=None
+            if p is None
+            else FiscalPeriod(p.fiscal_year, p.period_type, p.start_date, p.end_date),
+            severity=r.severity,
+            status=r.status,
+            expected=r.expected,
+            actual=r.actual,
+            difference=r.difference,
+            tolerance=r.tolerance,
+            unit=r.unit,
+            message=r.message,
+            inputs=r.inputs,
+        )
+        for r, p in rows
+    ]
+
+
 @dataclass(frozen=True)
 class Verification:
     stored_matches: bool  # stored rows re-serialize to content_sha256
-    rebuild_matches: bool  # rebuilding from facts reproduces the same bytes
+    validation_matches: bool  # stored checks = recorded hash = checks re-run on stored values
+    rebuild_matches: bool | None  # rebuild from facts reproduces the bytes (None: older format)
     inputs_match: bool  # the eligible facts are unchanged (input_sha256)
     mapping_matches: bool  # the mapping files still have the recorded fingerprint
     recomputed_sha256: str
 
     @property
     def ok(self) -> bool:
-        return self.stored_matches and self.rebuild_matches
+        return self.stored_matches and self.validation_matches and self.rebuild_matches is True
 
 
 def verify_dataset(db: Session, dataset: FinancialDataset, *, mappings_root: Path) -> Verification:
+    """Re-serialize stored rows and rebuild from facts; both must reproduce the hashes.
+
+    A rebuild comparison is only meaningful with the code's current dataset format; for an
+    older format, ``rebuild_matches`` is None and only the stored-row checks apply.
+    """
     if dataset.status == "discarded":
         raise DatasetError(f"Dataset {dataset.id} is discarded and holds no values")
-    stored_ok = hashlib.sha256(stored_canonical(db, dataset)).hexdigest() == (
-        dataset.content_sha256
-    )
+    values = stored_values(db, dataset)
+    periods = sorted({v.period for v in values}, key=FiscalPeriod.sort_key)
+    stored_bytes = ds.canonical_bytes(header_of(dataset), periods, values)
+    stored_ok = hashlib.sha256(stored_bytes).hexdigest() == dataset.content_sha256
     mapping = mapping_mod.load(mappings_root, dataset.mapping_version)
+    rerun = checks_mod.validate(values, mapping, dataset.currency)
+    validation_ok = (
+        dataset.validation_sha256 is not None
+        and checks_mod.sha256(stored_checks(db, dataset)) == dataset.validation_sha256
+        and checks_mod.sha256(rerun) == dataset.validation_sha256
+    )
     company = db.get(Company, dataset.company_id)
     assert company is not None
     rebuilt = _build(db, company, mapping, Policy(dataset.selection_policy), dataset.facts_as_of)
+    same_format = dataset.format_version == ds.FORMAT_VERSION
     return Verification(
         stored_matches=stored_ok,
-        rebuild_matches=rebuilt.content_sha256 == dataset.content_sha256,
+        validation_matches=validation_ok,
+        rebuild_matches=(rebuilt.content_sha256 == dataset.content_sha256) if same_format else None,
         inputs_match=rebuilt.header.input_sha256 == dataset.input_sha256,
         mapping_matches=mapping.sha256 == dataset.mapping_sha256,
         recomputed_sha256=rebuilt.content_sha256,
@@ -372,7 +449,12 @@ def lock_dataset(
         entity_id=str(dataset.id),
         user_id=user_id,
         before={"status": "draft"},
-        after={"status": "locked", "content_sha256": dataset.content_sha256},
+        after={
+            "status": "locked",
+            "content_sha256": dataset.content_sha256,
+            "validation_sha256": dataset.validation_sha256,
+            "validation": dataset.source_summary.get("validation"),
+        },
         reason=reason,
     )
     db.flush()
@@ -383,6 +465,7 @@ def discard_dataset(
     db: Session, dataset_id: uuid.UUID, *, reason: str, user_id: uuid.UUID | None = None
 ) -> FinancialDataset:
     dataset = _draft(db, dataset_id)
+    db.execute(delete(ValidationResult).where(ValidationResult.dataset_id == dataset.id))
     db.execute(delete(FinancialValue).where(FinancialValue.dataset_id == dataset.id))
     dataset.status = "discarded"
     dataset.discarded_at = datetime.now(UTC)

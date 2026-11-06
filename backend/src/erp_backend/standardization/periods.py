@@ -28,7 +28,7 @@ ANNUAL_DAYS = range(350, 381)
 QUARTER_DAYS = range(84, 99)
 QUARTER_LENGTH = 365.25 / 4
 OPEN_YEAR_SPAN = timedelta(days=380)  # how far past the last year-end an open year reaches
-PERIOD_ORDER = {"FY": 0, "Q1": 1, "H1": 2, "Q2": 3, "9M": 4, "Q3": 5, "Q4": 6}
+PERIOD_ORDER = {"FY": 0, "Q1": 1, "H1": 2, "Q2": 3, "9M": 4, "Q3": 5, "Q4": 6, "LTM": 7}
 PERIOD_TYPES = tuple(PERIOD_ORDER)
 YTD_TYPES = {2: "H1", 3: "9M"}
 

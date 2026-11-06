@@ -11,8 +11,8 @@
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
 - **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
-- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0006`, 6 SEC companies, 88,160 facts, and one verified **draft** dataset v1 per company (none locked: locking is the analyst's call).
-- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49) and versioned datasets (D50). Pushing needs owner approval.
+- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0007`, 6 SEC companies, 88,160 facts. Per company: dataset v1 discarded (format 1) and a verified **draft v2** (mapping v2, format 2, with integrity checks). None locked: locking is the analyst's call.
+- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51). Pushing needs owner approval.
 - **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
 
 ## Rules for this session (owner instructions)
@@ -41,8 +41,8 @@ Then ask the owner about the open decisions below. Only the commit question matt
 
 1. ~~SEC concept → standard statement mapping (v1)~~ **done** (D49). `mappings/v1/` is frozen (hash pinned in `0005`); changes go into `v2/` with a new migration. Gaps per company: KNOWN_LIMITATIONS §4d.
 2. ~~Versioned financial datasets~~ **done** (D50): `erp_backend.datasets` (service), `standardization/{periods,dataset}.py` (pure), migration `0006`, CLI `dataset-build|list|verify|lock|discard`. Limitations: KNOWN_LIMITATIONS §4e.
-3. **Balance and consistency checks (next)** (§5.3): balance sheet balances, subtotals (use `subtotal` in `mappings/v1`), cash roll-forward, cross-statement and share checks. Stored in `fin.validation_results`, run on dataset build, and required before approval for valuation. Add the remaining derivations (gross profit, EBITDA, quarterly CF from YTD) here or just before.
-4. **Data-conflict detection and handling** (§10.3, D13): materiality thresholds, resolve/override with reason, lock blocking, audit.
+3. ~~Balance and consistency checks; derivations~~ **done** (D51): `standardization/{validation,derivations}.py`, `fin.validation_results`, mapping v2 (`CF.FCF`), migration `0007`. Real findings (splits, mixed vintages, RY EPS numerator): KNOWN_LIMITATIONS §4f.
+4. **Data-conflict detection and handling (next)** (§10.3, D13): also the fix for mixed-vintage values (§4f); materiality thresholds, resolve/override with reason, lock blocking, audit.
 5. **Financial-business classification** (§7.6.1, D24): SIC plus XBRL evidence, suggested vs confirmed. **RY must classify as `bank`** (DCF blocked). Handle insurers, specialty lenders, REITs, asset managers/brokers and holdings. Verify the SIC lists against the SEC list. Fix the bank gap in interim-coverage templates (KNOWN_LIMITATIONS §4c).
 6. **Yahoo Finance (unofficial chart endpoint)** (§4.2, §4.5, D15, D16):
    - prices, splits and dividends;

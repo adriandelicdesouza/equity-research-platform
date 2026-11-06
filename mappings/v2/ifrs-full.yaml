@@ -1,0 +1,101 @@
+# ifrs-full concept candidates per standard line item, mapping version v2 (Blueprint §4.4).
+#
+# FROZEN once migration 0007 has loaded it (SHA-256 verified); changes go into v3/.
+# Same rules as us-gaap.yaml: priority order, per-period fallback, sign multipliers.
+#
+# Deliberately unmapped in v1 (no IFRS element with the same meaning):
+#   IS.OTHER_NONOPERATING, BS.PREFERRED_EQUITY, CF.CHANGE_WORKING_CAPITAL;
+#   BS.LT_DEBT from LongtermBorrowings, which INCLUDES the current portion and would
+#   double-count BS.CURRENT_LTD. The non-current amount is a derivation (later step).
+
+taxonomy: ifrs-full
+mappings:
+  IS.REVENUE: [Revenue, RevenueFromContractsWithCustomers]
+  IS.COGS: [CostOfSales]
+  IS.GROSS_PROFIT: [GrossProfit]
+  IS.SGA: [SellingGeneralAndAdministrativeExpense]
+  IS.SELLING_MARKETING: [SellingExpense]
+  IS.GENERAL_ADMIN: [AdministrativeExpense]
+  IS.RND: [ResearchAndDevelopmentExpense]
+  IS.OTHER_OPEX: [OtherExpenseByFunction]
+  IS.TOTAL_OPEX: [OperatingExpense]
+  IS.DA: [DepreciationAndAmortisationExpense]
+  IS.SBC:
+    - ExpenseFromSharebasedPaymentTransactionsWithEmployees
+    - ExpenseFromSharebasedPaymentTransactions
+  IS.EBIT: [ProfitLossFromOperatingActivities]
+  IS.INTEREST_EXPENSE: [FinanceCosts, InterestExpense, InterestExpenseOnBorrowings]
+  IS.INTEREST_INCOME: [FinanceIncome, InvestmentIncome]
+  IS.PRETAX_INCOME: [ProfitLossBeforeTax]
+  IS.INCOME_TAX: [IncomeTaxExpenseContinuingOperations]
+  IS.NET_INCOME: [ProfitLoss]
+  IS.NCI_SHARE: [ProfitLossAttributableToNoncontrollingInterests]
+  # Last-priority ProfitLoss / Equity: filers without non-controlling interests often tag
+  # only the consolidated total. Such values are recorded as fallbacks (priority > 1).
+  IS.NET_INCOME_COMMON:
+    - ProfitLossAttributableToOwnersOfParent
+    - ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity
+    - ProfitLoss
+  IS.EPS_BASIC: [BasicEarningsLossPerShare]
+  IS.EPS_DILUTED: [DilutedEarningsLossPerShare]
+  IS.SHARES_BASIC_WA: [WeightedAverageShares]
+  IS.SHARES_DILUTED_WA: [AdjustedWeightedAverageShares]
+  IS.ROU_DEPRECIATION: [DepreciationRightofuseAssets]
+  IS.LEASE_INTEREST: [InterestExpenseOnLeaseLiabilities]
+  IS.VARIABLE_LEASE_COST: [ExpenseRelatingToVariableLeasePaymentsNotIncludedInMeasurementOfLeaseLiabilities]
+  IS.SHORT_TERM_LEASE_COST: [ExpenseRelatingToShorttermLeasesForWhichRecognitionExemptionHasBeenUsed]
+
+  BS.CASH: [CashAndCashEquivalents]
+  BS.ST_INVESTMENTS: [CurrentInvestments, ShorttermDepositsNotClassifiedAsCashEquivalents]
+  BS.RECEIVABLES: [TradeAndOtherCurrentReceivables, CurrentTradeReceivables]
+  BS.INVENTORY: [Inventories]
+  BS.OTHER_CURRENT_ASSETS: [OtherCurrentAssets, CurrentPrepaymentsAndOtherCurrentAssets]
+  BS.TOTAL_CURRENT_ASSETS: [CurrentAssets]
+  BS.PPE_NET: [PropertyPlantAndEquipment]
+  BS.ROU_ASSETS: [RightofuseAssets]
+  BS.GOODWILL: [Goodwill]
+  BS.INTANGIBLES: [IntangibleAssetsOtherThanGoodwill]
+  BS.OTHER_NONCURRENT_ASSETS: [OtherNoncurrentAssets]
+  BS.TOTAL_ASSETS: [Assets]
+  BS.PAYABLES: [TradeAndOtherCurrentPayablesToTradeSuppliers, TradeAndOtherCurrentPayables]
+  BS.ACCRUED_LIABILITIES: [AccrualsClassifiedAsCurrent, CurrentAccruedExpensesAndOtherCurrentLiabilities]
+  BS.ST_DEBT: [CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings]
+  BS.SHORT_TERM_BORROWINGS: [ShorttermBorrowings]
+  BS.CURRENT_LTD: [CurrentPortionOfLongtermBorrowings]
+  BS.OTHER_CURRENT_LIABILITIES: [OtherCurrentLiabilities]
+  BS.TOTAL_CURRENT_LIABILITIES: [CurrentLiabilities]
+  BS.LT_DEBT: [NoncurrentPortionOfNoncurrentBorrowings]
+  BS.DEFERRED_TAX_LIABILITIES: [DeferredTaxLiabilities]
+  BS.OTHER_NONCURRENT_LIABILITIES: [OtherNoncurrentLiabilities]
+  BS.TOTAL_LIABILITIES: [Liabilities]
+  BS.COMMON_EQUITY: [EquityAttributableToOwnersOfParent, Equity]
+  BS.NCI: [NoncontrollingInterests]
+  BS.TOTAL_EQUITY: [Equity]
+  BS.TOTAL_LIABILITIES_EQUITY: [EquityAndLiabilities]
+  BS.SHARES_OUTSTANDING: [NumberOfSharesOutstanding]
+  BS.LEASE_LIAB_CURRENT: [CurrentLeaseLiabilities]
+  BS.LEASE_LIAB_NONCURRENT: [NoncurrentLeaseLiabilities]
+
+  CF.NET_INCOME: [ProfitLoss]
+  CF.DA: [AdjustmentsForDepreciationAndAmortisationExpense, DepreciationAndAmortisationExpense]
+  CF.SBC: [AdjustmentsForSharebasedPayments, ExpenseFromSharebasedPaymentTransactionsWithEmployees]
+  CF.CFO: [CashFlowsFromUsedInOperatingActivities]
+  CF.CAPEX: [{concept: PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities, sign: -1}]
+  CF.ACQUISITIONS:
+    - {concept: CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities, sign: -1}
+  CF.CFI: [CashFlowsFromUsedInInvestingActivities]
+  CF.DEBT_ISSUED: [ProceedsFromBorrowingsClassifiedAsFinancingActivities, ProceedsFromNoncurrentBorrowings]
+  CF.DEBT_REPAID:
+    - {concept: RepaymentsOfBorrowingsClassifiedAsFinancingActivities, sign: -1}
+    - {concept: RepaymentsOfNoncurrentBorrowings, sign: -1}
+  CF.BUYBACKS:
+    - {concept: PaymentsToAcquireOrRedeemEntitysShares, sign: -1}
+    - {concept: PurchaseOfTreasuryShares, sign: -1}
+  CF.DIVIDENDS:
+    - {concept: DividendsPaidClassifiedAsFinancingActivities, sign: -1}
+    - {concept: DividendsPaidOrdinaryShares, sign: -1}
+  CF.LEASE_PRINCIPAL: [{concept: PaymentsOfLeaseLiabilitiesClassifiedAsFinancingActivities, sign: -1}]
+  CF.CFF: [CashFlowsFromUsedInFinancingActivities]
+  CF.FX_EFFECT: [EffectOfExchangeRateChangesOnCashAndCashEquivalents]
+  # IncreaseDecreaseInCashAndCashEquivalents is after the exchange-rate effect.
+  CF.NET_CHANGE_CASH: [IncreaseDecreaseInCashAndCashEquivalents]

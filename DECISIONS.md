@@ -360,6 +360,33 @@ These refine the approved architecture. None changes an approved methodology dec
   - Periods and values, with full provenance.
   - Row ids and timestamps are excluded, so identical inputs give identical bytes.
 
+### D51. Integrity checks and derived values; mapping v2 (§4.4 step 5, §5.3; D13, D50)
+- **Checks run on every build** (pure `standardization/validation.py`). Results are stored in `fin.validation_results` with the draft and fingerprinted (`validation_sha256`, covered by `dataset-verify`). They follow the values' lifecycle: never updated, immutable once locked, removed on discard.
+- **Statuses:** `passed`, `failed`, `not_evaluable`. An input that is missing, ambiguous or in an unexpected unit makes the check `not_evaluable`; missing data never passes.
+- **Each result stores** expected, actual, difference (actual − expected), tolerance, unit, message, and inputs (value, provenance, concept, period, fact ids).
+- **Formulas:**
+  - **BALANCE:** assets = liabilities + equity.
+  - **SUBTOTAL:** every *reported* parent with a mapping `subtotal` equals the signed sum of its children. Derived parents aren't checked, since they would be compared with themselves.
+  - **CASH_ROLLFORWARD:** reported net change in cash = CFO + CFI + CFF + FX.
+  - **CASH_RECONCILIATION** (warning, FY): net change in cash = BS cash − prior FY-end BS cash. A warning because cash-flow cash often includes restricted cash.
+  - **CROSS_NET_INCOME:** IS net income = CF starting net income.
+  - **CROSS_DA:** IS D&A = CF D&A, only where both are reported.
+  - **SHARES_DILUTED_GE_BASIC:** 1% tolerance.
+  - **EPS_BASIC** (error) / **EPS_DILUTED** (warning): EPS × weighted shares = net income to the parent.
+  - **COMPLETENESS:** 11 DCF-required items present in each of the latest 5 FYs.
+- **Tolerances:**
+  - Balance, subtotal, cash and cross-statement checks: max(0.1% of the period's total assets, or of the larger compared value when assets are unavailable; one unit of reporting precision). Precision is inferred from the inputs' trailing zeros, capped at 10⁶.
+  - Shares: 1%.
+  - EPS: max(1% of net income, $0.005 × shares).
+- **Locking is not blocked by failed checks:** that stays the analyst's decision, and the lock's audit event records the validation summary. Approval-for-valuation gating (§5.3, with an override reason) belongs to the valuation workflow.
+- **Derivations** (pure `standardization/derivations.py`; dataset format 2):
+  - **Quarters from year-to-date:** Q2 = H1 − Q1, Q3 = 9M − H1, Q4 = FY − 9M. This includes quarterly cash flows.
+  - **Formulas** from the mapping's subtotals, when the parent isn't reported: gross profit, EBITDA (EBIT + CF D&A), FCF, SG&A, short-term debt, equity totals, net change in cash.
+  - **LTM** = previous FY + YTD − prior-year YTD, at each Q1/H1/9M end.
+  - Inputs must be valid values of the same concept and sign (formulas: the same period and unit); reported values always win, and windows must align with the dataset's existing periods. Skips are counted by reason.
+- **Mapping v2** = v1 + `CF.FCF` (derived only; CFO + capex), loaded and pinned by migration `0007`. v1 stays loaded, and the default `ERP_MAPPING_VERSION` is now `v2`. LTM is a new period type.
+- **Older datasets:** a format-1 dataset can still be checked against its stored rows. The rebuild comparison needs the current code's format (`rebuild_matches = None`), and such a dataset has no stored checks, so it can't be locked; build a new version instead.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

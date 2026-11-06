@@ -387,3 +387,27 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - AAPL FY2026: Q1 + Q2 + Q3 + derived Q4 = FY revenue (478,834 M).
   - Nothing was locked in dev.
 - **Tests:** 43 new (backend 152 → 195). `make check` passes. Dev stack stopped. No network requests.
+
+### Session 3, continued — M2 integrity checks and derived values (2026-11-06)
+
+- **Task:** NEXT_SESSION item 3, plus the remaining derivations.
+- **Built:**
+  - pure checks (`standardization/validation.py`) and pure derivations (`standardization/derivations.py`);
+  - `dataset_types.py`, holding the shared value types;
+  - mapping v2 (`CF.FCF`) and migration `0007`: `fin.validation_results` (draft-only lifecycle), `validation_sha256` and the LTM period type;
+  - the service runs and stores checks on every build, and verification covers them.
+  - Dataset format is now 2. Decision D51; KNOWN_LIMITATIONS §4f.
+- **Bug found and fixed:** stored rows were re-serialized with the code's current format instead of the dataset's own. The old format-1 drafts showed `stored_matches=False` before they were discarded. A test now covers it.
+- **Dev DB:** migrated `0006 → 0007`. The six v1 drafts were discarded (audited, "superseded") and draft v2 built and verified for each. None locked.
+
+  | Company | Values | Derived (of which LTM) | Checks passed / failed / not evaluable |
+  |---|---|---|---|
+  | AAPL | 7,077 | 2,409 (1,373) | 763 / 23 / 395 |
+  | MSFT | 7,762 | 2,231 (1,501) | 837 / 10 / 251 |
+  | SHOP | 1,435 | 292 (156) | 188 / 1 / 95 |
+  | CNI | 1,270 | 142 (46) | 178 / 3 / 105 |
+  | CNQ | 547 | 4 (0) | 103 / 2 / 36 |
+  | RY | 1,995 | 520 (377) | 367 / 111 / 7 |
+
+  The failures were inspected and are real data issues (KNOWN_LIMITATIONS §4f): AAPL stock-split EPS and D&A concept definitions, MSFT/RY mixed filing vintages, and the RY EPS numerator with preferred shares.
+- **Tests:** 31 new (backend 195 → 226). `make check` passes. Dev stack stopped. No network requests.

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Identity,
     Integer,
     Numeric,
     SmallInteger,
@@ -59,6 +60,7 @@ class FinancialDataset(Base):
     format_version: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    validation_sha256: Mapped[str | None] = mapped_column(String(64))
     interim_coverage: Mapped[str] = mapped_column(String(8), nullable=False)
     value_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -94,3 +96,23 @@ class FinancialValue(Base):
     sign_multiplier: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     source_fact_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), nullable=False)
     detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+class ValidationResult(Base):
+    __tablename__ = "validation_results"
+    __table_args__ = {"schema": "fin"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fin.financial_datasets.id"))
+    check_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fin.fiscal_periods.id"))
+    severity: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    expected: Mapped[Decimal | None] = mapped_column(Numeric)
+    actual: Mapped[Decimal | None] = mapped_column(Numeric)
+    difference: Mapped[Decimal | None] = mapped_column(Numeric)
+    tolerance: Mapped[Decimal | None] = mapped_column(Numeric)
+    unit: Mapped[str | None] = mapped_column(String(64))
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

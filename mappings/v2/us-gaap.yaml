@@ -1,0 +1,152 @@
+# us-gaap concept candidates per standard line item, mapping version v2 (Blueprint §4.4).
+#
+# FROZEN once migration 0007 has loaded it (SHA-256 verified); changes go into v3/.
+# For each line item, candidates are in priority order: per period, the first concept
+# with a selectable fact wins and is recorded (fallback is never mixed within one value).
+# A plain entry has sign +1. {concept: X, sign: -1} flips the reported sign into the
+# line item's convention (e.g. a positive "Payments..." becomes a negative cash flow).
+# Only non-dimensional facts are mapped (SEC companyfacts carries no dimensions).
+
+taxonomy: us-gaap
+mappings:
+  IS.REVENUE:
+    - RevenueFromContractWithCustomerExcludingAssessedTax
+    - Revenues
+    - SalesRevenueNet
+    - RevenueFromContractWithCustomerIncludingAssessedTax
+  IS.COGS:
+    - CostOfGoodsAndServicesSold
+    - CostOfRevenue
+    - CostOfGoodsSold
+    - CostOfServices
+  IS.GROSS_PROFIT: [GrossProfit]
+  IS.SGA: [SellingGeneralAndAdministrativeExpense]
+  IS.SELLING_MARKETING: [SellingAndMarketingExpense, SellingExpense]
+  IS.GENERAL_ADMIN: [GeneralAndAdministrativeExpense]
+  IS.RND:
+    - ResearchAndDevelopmentExpense
+    - ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost
+  IS.OTHER_OPEX: [OtherCostAndExpenseOperating]
+  IS.TOTAL_OPEX: [OperatingExpenses]
+  IS.DA: [DepreciationAndAmortization]
+  IS.SBC: [AllocatedShareBasedCompensationExpense, ShareBasedCompensation]
+  IS.EBIT: [OperatingIncomeLoss]
+  IS.INTEREST_EXPENSE:
+    - InterestExpense
+    - InterestExpenseNonoperating
+    - InterestExpenseDebt
+  IS.INTEREST_INCOME:
+    - InvestmentIncomeInterestAndDividend
+    - InvestmentIncomeInterest
+    - InvestmentIncomeNet
+  IS.OTHER_NONOPERATING: [NonoperatingIncomeExpense, OtherNonoperatingIncomeExpense]
+  IS.PRETAX_INCOME:
+    - IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+    - IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
+    - IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic
+  IS.INCOME_TAX: [IncomeTaxExpenseBenefit]
+  IS.NET_INCOME: [ProfitLoss, NetIncomeLoss]
+  IS.NCI_SHARE: [NetIncomeLossAttributableToNoncontrollingInterest]
+  IS.NET_INCOME_COMMON: [NetIncomeLoss, NetIncomeLossAvailableToCommonStockholdersBasic]
+  IS.EPS_BASIC: [EarningsPerShareBasic, EarningsPerShareBasicAndDiluted]
+  IS.EPS_DILUTED: [EarningsPerShareDiluted, EarningsPerShareBasicAndDiluted]
+  IS.SHARES_BASIC_WA:
+    - WeightedAverageNumberOfSharesOutstandingBasic
+    - WeightedAverageNumberOfShareOutstandingBasicAndDiluted
+  IS.SHARES_DILUTED_WA:
+    - WeightedAverageNumberOfDilutedSharesOutstanding
+    - WeightedAverageNumberOfShareOutstandingBasicAndDiluted
+  IS.OPERATING_LEASE_COST: [OperatingLeaseCost]
+  IS.ROU_DEPRECIATION: [FinanceLeaseRightOfUseAssetAmortization]
+  IS.LEASE_INTEREST: [FinanceLeaseInterestExpense]
+  IS.VARIABLE_LEASE_COST: [VariableLeaseCost]
+  IS.SHORT_TERM_LEASE_COST: [ShortTermLeaseCost]
+
+  BS.CASH: [CashAndCashEquivalentsAtCarryingValue, Cash]
+  BS.ST_INVESTMENTS:
+    - ShortTermInvestments
+    - MarketableSecuritiesCurrent
+    - AvailableForSaleSecuritiesDebtSecuritiesCurrent
+  BS.RECEIVABLES:
+    - AccountsReceivableNetCurrent
+    - ReceivablesNetCurrent
+    - AccountsAndOtherReceivablesNetCurrent
+  BS.INVENTORY: [InventoryNet]
+  BS.OTHER_CURRENT_ASSETS: [OtherAssetsCurrent, PrepaidExpenseAndOtherAssetsCurrent]
+  BS.TOTAL_CURRENT_ASSETS: [AssetsCurrent]
+  BS.PPE_NET:
+    - PropertyPlantAndEquipmentNet
+    - PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization
+  BS.ROU_ASSETS: [OperatingLeaseRightOfUseAsset]
+  BS.GOODWILL: [Goodwill]
+  BS.INTANGIBLES: [IntangibleAssetsNetExcludingGoodwill, FiniteLivedIntangibleAssetsNet]
+  BS.OTHER_NONCURRENT_ASSETS: [OtherAssetsNoncurrent]
+  BS.TOTAL_ASSETS: [Assets]
+  BS.PAYABLES: [AccountsPayableCurrent, AccountsPayableTradeCurrent]
+  BS.ACCRUED_LIABILITIES:
+    - AccruedLiabilitiesCurrent
+    - OtherAccruedLiabilitiesCurrent
+    - EmployeeRelatedLiabilitiesCurrent
+  BS.ST_DEBT: [DebtCurrent, LongTermDebtAndCapitalLeaseObligationsCurrent]
+  BS.SHORT_TERM_BORROWINGS: [ShortTermBorrowings, CommercialPaper]
+  BS.CURRENT_LTD: [LongTermDebtCurrent, ConvertibleDebtCurrent]
+  BS.OTHER_CURRENT_LIABILITIES: [OtherLiabilitiesCurrent]
+  BS.TOTAL_CURRENT_LIABILITIES: [LiabilitiesCurrent]
+  BS.LT_DEBT:
+    - LongTermDebtNoncurrent
+    - LongTermDebtAndCapitalLeaseObligations
+    - ConvertibleDebtNoncurrent
+  BS.DEFERRED_TAX_LIABILITIES: [DeferredIncomeTaxLiabilitiesNet, DeferredTaxLiabilitiesNoncurrent]
+  BS.OTHER_NONCURRENT_LIABILITIES: [OtherLiabilitiesNoncurrent]
+  BS.TOTAL_LIABILITIES: [Liabilities]
+  BS.PREFERRED_EQUITY: [PreferredStockValue]
+  BS.COMMON_EQUITY: [StockholdersEquity]
+  BS.NCI: [MinorityInterest]
+  BS.TOTAL_EQUITY:
+    - StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+    - StockholdersEquity
+  BS.TOTAL_LIABILITIES_EQUITY: [LiabilitiesAndStockholdersEquity]
+  BS.SHARES_OUTSTANDING: [CommonStockSharesOutstanding]
+  BS.OPERATING_LEASE_LIAB_CURRENT: [OperatingLeaseLiabilityCurrent]
+  BS.OPERATING_LEASE_LIAB_NONCURRENT: [OperatingLeaseLiabilityNoncurrent]
+  BS.FINANCE_LEASE_LIAB_CURRENT: [FinanceLeaseLiabilityCurrent]
+  BS.FINANCE_LEASE_LIAB_NONCURRENT: [FinanceLeaseLiabilityNoncurrent]
+
+  CF.NET_INCOME: [ProfitLoss, NetIncomeLoss]
+  CF.DA:
+    - DepreciationDepletionAndAmortization
+    - DepreciationAmortizationAndAccretionNet
+    - DepreciationAndAmortization
+  CF.SBC: [ShareBasedCompensation, AllocatedShareBasedCompensationExpense]
+  # IncreaseDecreaseInOperatingCapital is positive when working capital increases (cash use).
+  CF.CHANGE_WORKING_CAPITAL: [{concept: IncreaseDecreaseInOperatingCapital, sign: -1}]
+  CF.CFO:
+    - NetCashProvidedByUsedInOperatingActivities
+    - NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+  CF.CAPEX: [{concept: PaymentsToAcquirePropertyPlantAndEquipment, sign: -1}, {concept: PaymentsToAcquireProductiveAssets, sign: -1}]
+  CF.ACQUISITIONS: [{concept: PaymentsToAcquireBusinessesNetOfCashAcquired, sign: -1}]
+  CF.CFI:
+    - NetCashProvidedByUsedInInvestingActivities
+    - NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
+  CF.DEBT_ISSUED:
+    - ProceedsFromIssuanceOfLongTermDebt
+    - ProceedsFromIssuanceOfDebt
+    - ProceedsFromConvertibleDebt
+    - ProceedsFromDebtMaturingInMoreThanThreeMonths
+  CF.DEBT_REPAID:
+    - {concept: RepaymentsOfLongTermDebt, sign: -1}
+    - {concept: RepaymentsOfDebt, sign: -1}
+    - {concept: RepaymentsOfDebtMaturingInMoreThanThreeMonths, sign: -1}
+  CF.BUYBACKS: [{concept: PaymentsForRepurchaseOfCommonStock, sign: -1}]
+  CF.DIVIDENDS: [{concept: PaymentsOfDividendsCommonStock, sign: -1}, {concept: PaymentsOfDividends, sign: -1}]
+  CF.LEASE_PRINCIPAL: [{concept: FinanceLeasePrincipalPayments, sign: -1}]
+  CF.CFF:
+    - NetCashProvidedByUsedInFinancingActivities
+    - NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
+  CF.FX_EFFECT:
+    - EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
+    - EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsIncludingDisposalGroupAndDiscontinuedOperations
+    - EffectOfExchangeRateOnCashAndCashEquivalents
+  CF.NET_CHANGE_CASH:
+    - CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect
+    - CashAndCashEquivalentsPeriodIncreaseDecrease

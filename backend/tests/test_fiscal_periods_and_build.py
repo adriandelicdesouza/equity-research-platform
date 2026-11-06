@@ -141,9 +141,12 @@ def test_q4_is_derived_from_fy_minus_nine_months(v1: m.MappingSet) -> None:
     assert (q4.period.start, q4.period.end) == Q4
     assert q4.source_fact_ids == (1, 2)
     assert q4.detail["rule"] == "Q4=FY-9M"
-    assert q4.detail["accessions"] == [K["accn"], Q["accn"]]
+    assert q4.detail["inputs"] == [
+        ["FY", "1000", "reported", K["accn"]],
+        ["9M", "700", "reported", Q["accn"]],
+    ]
     assert vals[("FY", "IS.REVENUE")].provenance == "reported"
-    assert built.summary["values_derived"] == 1
+    assert built.summary["derived_by_rule"] == {"Q4": 1}
 
 
 def test_q4_is_not_derived_when_unsafe(v1: m.MappingSet) -> None:
@@ -177,10 +180,13 @@ def test_q4_is_not_derived_when_unsafe(v1: m.MappingSet) -> None:
     nine_ni = vals[("9M", "IS.NET_INCOME")]
     assert nine_ni.status == "ambiguous" and nine_ni.value is None
     assert nine_ni.detail["ambiguous_accessions"] == [Q["accn"]]
-    assert built.summary["q4_not_derived"] == {
+    assert built.summary["not_derived"] == {
         # NetIncomeLoss feeds IS.NET_INCOME, IS.NET_INCOME_COMMON and CF.NET_INCOME.
-        "ambiguous_input": 3,
-        "concept_mismatch": 1,
+        "Q4=FY-9M:ambiguous_input": 3,
+        "Q4=FY-9M:concept_mismatch": 1,
+        # Formulas with a missing child are skipped, never computed with a zero.
+        "IS.EBITDA:missing_input": 3,  # EBIT present, D&A absent (FY, 9M, Q4)
+        "IS.GROSS_PROFIT:missing_input": 2,  # revenue present, COGS absent (FY, 9M)
     }
     assert built.summary["values_ambiguous"] == 3
 

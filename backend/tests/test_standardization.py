@@ -26,7 +26,11 @@ from sqlalchemy.exc import DBAPIError
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = REPO / "mappings"
-MIGRATION = REPO / "backend" / "alembic" / "versions" / "0005_reference_mappings.py"
+MIGRATIONS = REPO / "backend" / "alembic" / "versions"
+PINNED = {
+    "v1": ("0005_reference_mappings.py", "V1_SHA256"),
+    "v2": ("0007_validation_and_mapping_v2.py", "V2_SHA256"),
+}
 
 
 @pytest.fixture(scope="module")
@@ -69,12 +73,23 @@ def test_v1_subtotals_reference_known_items(v1: m.MappingSet) -> None:
     assert v1.line_items["IS.SELLING_MARKETING"].parent == "IS.SGA"
 
 
-def test_v1_fingerprint_is_pinned_by_the_migration(v1: m.MappingSet) -> None:
-    spec = importlib.util.spec_from_file_location("migration_0005", MIGRATION)
+@pytest.mark.parametrize("version", sorted(PINNED))
+def test_fingerprints_are_pinned_by_their_migrations(version: str) -> None:
+    filename, constant = PINNED[version]
+    spec = importlib.util.spec_from_file_location(f"migration_{version}", MIGRATIONS / filename)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert v1.sha256 == module.V1_SHA256 == m.content_sha256(ROOT, "v1")
+    loaded = m.load(ROOT, version)
+    assert loaded.sha256 == getattr(module, constant) == m.content_sha256(ROOT, version)
+
+
+def test_v2_adds_free_cash_flow_and_keeps_v1_candidates(v1: m.MappingSet) -> None:
+    v2 = m.load(ROOT, "v2")
+    assert set(v2.line_items) - set(v1.line_items) == {"CF.FCF"}
+    assert v2.line_items["CF.FCF"].subtotal == ((1, "CF.CFO"), (1, "CF.CAPEX"))
+    assert v2.line_items["CF.FCF"].derived_only
+    assert v2.candidates == v1.candidates
 
 
 # ---- Validation ------------------------------------------------------------------------------
@@ -324,26 +339,31 @@ def test_helpers() -> None:
 # ---- Database: migration 0005 ----------------------------------------------------------------
 
 
-def test_reference_tables_match_the_yaml(app_engine: Engine, v1: m.MappingSet) -> None:
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_reference_tables_match_the_yaml(app_engine: Engine, version: str) -> None:
+    loaded = m.load(ROOT, version)
     with app_engine.connect() as conn:
-        version = conn.execute(
-            text("SELECT version, content_sha256 FROM ref.mapping_versions")
+        version_rows = conn.execute(
+            text("SELECT version, content_sha256 FROM ref.mapping_versions WHERE version = :v"),
+            {"v": version},
         ).all()
         items = conn.execute(
             text(
                 "SELECT code, statement, period_type, value_type, sign_convention, is_subtotal, "
                 "subtotal_formula, derived_only FROM ref.standard_line_items "
-                "WHERE mapping_version = 'v1' ORDER BY sort_order"
-            )
+                "WHERE mapping_version = :v ORDER BY sort_order"
+            ),
+            {"v": version},
         ).all()
         concepts = conn.execute(
             text(
                 "SELECT taxonomy, line_item_code, priority, concept, sign_multiplier "
-                "FROM ref.concept_mappings WHERE mapping_version = 'v1'"
-            )
+                "FROM ref.concept_mappings WHERE mapping_version = :v"
+            ),
+            {"v": version},
         ).all()
-    assert [tuple(r) for r in version] == [("v1", v1.sha256)]
-    assert [r.code for r in items] == list(v1.line_items)
+    assert [tuple(r) for r in version_rows] == [(version, loaded.sha256)]
+    assert [r.code for r in items] == list(loaded.line_items)
     gp = next(r for r in items if r.code == "IS.GROSS_PROFIT")
     assert gp.is_subtotal and gp.subtotal_formula == [
         {"sign": 1, "code": "IS.REVENUE"},
@@ -351,7 +371,7 @@ def test_reference_tables_match_the_yaml(app_engine: Engine, v1: m.MappingSet) -
     ]
     expected = {
         (c.taxonomy, c.line_item, c.priority, c.concept, c.sign)
-        for cands in v1.candidates.values()
+        for cands in loaded.candidates.values()
         for c in cands
     }
     assert {tuple(r) for r in concepts} == expected

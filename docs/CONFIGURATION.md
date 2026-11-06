@@ -32,7 +32,7 @@ Configuration has two layers:
 | `ERP_LOGIN_WINDOW_SECONDS` | no | `900` | integer seconds | Sliding window for the login rate limit. |
 | `ERP_RAW_ROOT` | no | `/data/raw` | directory path | Root of the content-addressed raw provider payload archive (worker). |
 | `ERP_MAPPINGS_ROOT` | no | `/app/mappings` | directory path | Root of the versioned concept-mapping YAML (`mappings/` in the repository, copied into the image). Read by migrations and standardization. |
-| `ERP_MAPPING_VERSION` | no | `v1` | `v<n>` | Mapping version used by standardization (D49). |
+| `ERP_MAPPING_VERSION` | no | `v2` | `v<n>` | Mapping version used for new dataset builds (D49, D51). Loaded versions: v1, v2. |
 | `ERP_SEC_USER_AGENT` | **yes** for SEC ingestion | none | `"<name or organisation> <contact email>"` | Contact User-Agent that the SEC requires. Placeholders and reserved domains are rejected; without it, no SEC request can be made. Set only in the git-ignored env file. |
 
 Process-level variables (not part of `Settings`):
