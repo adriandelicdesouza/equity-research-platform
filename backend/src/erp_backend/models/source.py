@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
+    Identity,
     Integer,
     Numeric,
     String,
@@ -62,3 +64,53 @@ class ProviderFetch(Base):
     stored_bytes: Mapped[int | None] = mapped_column(BigInteger)
     error: Mapped[str | None] = mapped_column(Text)
     request_id: Mapped[str | None] = mapped_column(String(64))
+
+
+class SecTicker(Base):
+    """One row of an archived SEC ticker-map snapshot."""
+
+    __tablename__ = "sec_tickers"
+    __table_args__ = {"schema": "source"}  # noqa: RUF012
+
+    fetch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source.provider_fetches.id"), primary_key=True
+    )
+    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
+    cik: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    exchange: Mapped[str | None] = mapped_column(String(64))
+
+
+class Filing(Base):
+    __tablename__ = "filings"
+    __table_args__ = {"schema": "source"}  # noqa: RUF012
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.companies.id"))
+    accession_no: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    form: Mapped[str] = mapped_column(String(16), nullable=False)
+    filed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    period_of_report: Mapped[date | None] = mapped_column(Date)
+    primary_document: Mapped[str | None] = mapped_column(Text)
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
+
+
+class ReportedFact(Base):
+    __tablename__ = "reported_facts"
+    __table_args__ = {"schema": "source"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.companies.id"))
+    taxonomy: Mapped[str] = mapped_column(String(32), nullable=False)
+    concept: Mapped[str] = mapped_column(String(256), nullable=False)
+    unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    fiscal_year: Mapped[int | None] = mapped_column(Integer)
+    fiscal_period: Mapped[str | None] = mapped_column(String(4))
+    form: Mapped[str] = mapped_column(String(16), nullable=False)
+    filed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    accession_no: Mapped[str] = mapped_column(String(20), nullable=False)
+    frame: Mapped[str | None] = mapped_column(String(16))
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))

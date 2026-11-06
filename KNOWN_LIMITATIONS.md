@@ -107,6 +107,15 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Regression-beta CI:** uses an analytic t-quantile approximation (D38).
 - **Sensitivity grids and scenarios:** M4.
 
+## 4c. SEC adapter (M2, Session 3)
+
+- **Filing history:** submissions ingestion reads the `filings.recent` block only. Older filing pages (`filings.files`) aren't fetched yet. Facts still cover all periods, and filings referenced by facts are recorded from the facts.
+- **Coverage template:** interim coverage uses an industrial template. Banks and insurers often lack an operating-income line, so they can show `partial`/`none` even when they file interim XBRL.
+- **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
+- **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
+- **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
+- **Not built yet:** standardization mapping (concept → line item), dataset versions, integrity checks and the classifier. These are the next M2 steps.
+
 ## 5. Unresolved items
 
 1. SEC User-Agent contact string (needed for M2).

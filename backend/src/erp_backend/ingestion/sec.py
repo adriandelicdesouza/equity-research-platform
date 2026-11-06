@@ -13,11 +13,15 @@ import re
 import httpx
 
 from erp_backend.config import Settings
-from erp_backend.ingestion.http import ProviderClient, ProviderNotConfiguredError
+from erp_backend.ingestion.http import ProviderClient, ProviderNotConfiguredError, RateLimiter
 
 SEC_DATA_BASE = "https://data.sec.gov"
 SEC_WWW_BASE = "https://www.sec.gov"
 SEC_RATE_PER_SECOND = 5.0  # SEC fair-access limit is 10/s; stay well below
+
+# One limiter per process: every SEC client shares it, so consecutive tasks in the worker
+# cannot exceed the rate between them (the worker is the only process that fetches).
+_PROCESS_LIMITER = RateLimiter(SEC_RATE_PER_SECOND)
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
 _RESERVED_DOMAINS = re.compile(
@@ -45,11 +49,17 @@ def validate_user_agent(value: str | None) -> str:
     return text
 
 
-def sec_client(settings: Settings, transport: httpx.BaseTransport | None = None) -> ProviderClient:
+def sec_client(
+    settings: Settings,
+    transport: httpx.BaseTransport | None = None,
+    *,
+    limiter: RateLimiter | None = None,
+) -> ProviderClient:
     """The only way to obtain an SEC client; refuses without a valid owner-supplied UA."""
     return ProviderClient(
         provider_code="sec_edgar",
         user_agent=validate_user_agent(settings.sec_user_agent),
         per_second=SEC_RATE_PER_SECOND,
         transport=transport,
+        shared_limiter=limiter or _PROCESS_LIMITER,
     )

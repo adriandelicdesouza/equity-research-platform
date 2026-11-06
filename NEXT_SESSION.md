@@ -4,59 +4,51 @@
 
 ## Verified state
 
-- **Architecture:** Revision 2 APPROVED (decisions up to D42).
+- **Architecture:** Revision 2 APPROVED (decisions up to D46).
 - **Git:**
   - `main` @ `057b963` (M0 + M1).
-  - Branch **`m2-ingestion`** holds the M2-preparation commit. **Not merged.**
+  - Branch **`m2-ingestion`** holds the M2 foundation and **SEC adapter** commits. **Keep unmerged until M2 is complete and ready for review** (owner instruction).
   - No remote; nothing pushed.
-- **Done for M2 so far:**
-  - runtime dependencies (D40);
-  - job queue in schema `jobs` and `worker` service (D41);
-  - `source.providers` and append-only `source.provider_fetches`;
-  - raw payload archive;
-  - provider HTTP client;
-  - SEC User-Agent gate (D42).
-- **Dev stack `erp-dev`:** `web`, `api`, `db`, `worker`, all healthy, loopback only. DB at Alembic `0003`.
-- **No SEC request has ever been made by the application.** `ERP_SEC_USER_AGENT` is not configured.
+- **SEC:** the owner's User-Agent is configured in git-ignored `.env.dev` and reaches the `worker` only.
+  - **13 live SEC requests** were made (Session 3), all successful and at ≤ 5 req/s.
+  - Data loaded for AAPL, MSFT, SHOP, CNI, CNQ, RY (88,160 facts).
+- **Dev stack `erp-dev`:** `web`, `api`, `db`, `worker`, all healthy. DB at Alembic `0004`.
 
-## BLOCKING decision — needs the owner
+## Owner decisions open
 
-**SEC User-Agent contact string.**
-- It must be the owner's real organisation or name plus contact email, e.g. the form `Company Name contact@company-domain`. **Do not invent one or use a placeholder.**
-- Once given, add it to `.env.dev` as `ERP_SEC_USER_AGENT=...`. Never commit it.
-- Then pass it through to the `worker` (and `api`) environment in `infra/compose.yaml` via `${ERP_SEC_USER_AGENT}`. That isn't wired yet, deliberately.
-
-## Other open decisions
-
-- Merge `m2-ingestion` into `main`: after the SEC adapter milestone, or now if preferred.
-- Off-server backup destination: before production (M5).
+- Merge of `m2-ingestion`: at M2 completion (review requested then).
+- Off-server backup destination: before production (M5). Deferred.
 - Minecraft co-residency test: deferred to M5. Do not start `minecraft.service`.
 
-## Exact next task (only after the User-Agent is provided)
+## Exact next task: rest of M2 (Blueprint §4.4–§4.6, §5, §14.1 M2)
 
-**SEC adapter + standardization foundation** (Blueprint §4.2–§4.4, D11, D12):
-1. Wire `ERP_SEC_USER_AGENT` into compose. Verify the gate accepts it: `python -m erp_backend.cli` check, no request yet.
-2. Migration `0004`: `market.companies`, `market.securities`, `market.company_identifiers`, `source.filings`, `source.reported_facts` (Blueprint §3.3).
-3. Adapter tasks on queue `ingestion`:
-   - ticker map (`company_tickers_exchange.json`, cached daily);
-   - submissions (profile);
-   - companyfacts.
-   Each goes through `fetch_and_archive`.
-4. Fact parser and deterministic first/latest selection with `facts_as_of` (D11). Interim-coverage detection (D12).
-5. Fixtures: trimmed real payloads fetched once through the adapter (AAPL, MSFT, SHOP, CNI, CNQ, RY). Tests stay offline using those fixtures.
+1. **Standardization mapping v1:** versioned YAML in `mappings/` (concept → standard line item, priority, sign) for `us-gaap` and `ifrs-full`, plus the `ref` tables loaded by migration. Concept fallback is chosen per period.
+2. **Financial datasets:** `fin.fiscal_periods`, `fin.financial_datasets` (`selection_policy`, `facts_as_of`, `interim_coverage`), `fin.financial_values` built from the D11 selection, with derived values flagged (gross profit, Q4 = FY − 9M, EBITDA).
+3. **Integrity checks** (Blueprint §5.3) and **conflict materiality / lock blocking** (§10.3, D13).
+4. **Financial-business classifier** (D24): SIC plus XBRL evidence. RY must classify as `bank`.
+5. **Remaining providers:**
+   - Yahoo chart prices, with manual TSX listing entry and symbol validation (D15);
+   - Treasury and Bank of Canada rates and FX;
+   - Damodaran reference datasets;
+   - Excel/CSV import template.
+   **Ask before the first live request to each new provider.**
 
-**Verification:**
-- `make check` green.
-- Selection permutation tests pass.
-- Rebuilding from archived facts is byte-identical.
-- First live fetches stay at ≤ 5 req/s and are logged in `source.provider_fetches`.
+**M2 exit criteria (Blueprint §14.1):**
+- The five companies load with ≥ 8–15 years and passing balance checks.
+- RY is classified `bank`, so DCF is blocked.
+- A TSX-only company is entered manually, its symbol validated, and its financials imported via template.
+- Rebuilding a dataset from archived facts is byte-identical.
 
 ## Prerequisites at startup
 
 ```bash
-git switch m2-ingestion && git status --short && git log --oneline -4
+git switch m2-ingestion && git status --short && git log --oneline -5
 make ps-dev || make up-dev
 make check
 ```
 
-Use `make` targets or `.tools/bin/uv run --all-packages …`. Run long jobs (image builds, `make up-dev`) in the background.
+- Use `make` targets or `.tools/bin/uv run --all-packages …`. Run image builds and `make up-dev` in the background.
+- SEC CLI, which runs where the User-Agent exists (the worker):
+  - `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-check-config`
+  - `docker exec erp-dev-api-1 python -m erp_backend.cli sec-ingest --ticker XYZ` (enqueue only)
+  - `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-rebuild-from-archive` (no network)

@@ -125,6 +125,8 @@ services:
       <<: *app-env
       ERP_RAW_ROOT: /data/raw
       ERP_WORKER_CONCURRENCY: ${ERP_WORKER_CONCURRENCY:-1}
+      # Owner-supplied SEC contact User-Agent; defined only in the git-ignored env file (D42).
+      ERP_SEC_USER_AGENT: ${ERP_SEC_USER_AGENT:-}
       MALLOC_ARENA_MAX: "2"
     secrets: [db_app_password]
     volumes:

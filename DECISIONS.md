@@ -284,6 +284,39 @@ These refine the approved architecture. None changes an approved methodology dec
 - **No default:** none exists, and the setting is never committed (`.env` only).
 - **Tests:** they use a `MockTransport` with a clearly labelled validator fixture, so no test can reach SEC.
 
+## Implementation decisions during the SEC adapter (Session 3)
+
+### D43. Reported-fact storage
+- **Keys:** `source.reported_facts` uses a `bigint` identity key rather than a UUID, for row size at volume.
+- **Uniqueness:** `(company, taxonomy, concept, unit, start, end, accession, value)` with `NULLS NOT DISTINCT`. Exact repeats collapse. Differing values within one filing are both kept, so selection can mark them AMBIGUOUS instead of silently picking one (D11).
+- **Source records** (`sec_tickers`, `filings`, `reported_facts`) are append-only:
+  - `erp_app` has INSERT/SELECT only;
+  - a trigger rejects UPDATE/DELETE/TRUNCATE for every role.
+- **Numbers:** values are parsed as `Decimal` from the JSON (never float).
+
+### D44. Interim-coverage definition (D12 made concrete)
+- **Window:** the 8 most recent interim period-ends found in 10-Q/6-K (and amendments). Q4 isn't reported on interim forms, so 8 period-ends cover about 2.7 years.
+- **A period is complete when it has:**
+  - quarterly revenue, operating income and net income (84–98-day durations);
+  - cash and total assets (instants);
+  - year-to-date operating cash flow.
+- **Levels:** `full` = 8/8 complete, `none` = 0, otherwise `partial`.
+- **Recorded per period:** the forms used and whether data came from 6-K.
+- **Refined after live data:** a period-end counts only if an interim form reports a quarterly revenue or net-income flow ending there. 10-Qs restate the prior fiscal year-end balance sheet, and those comparative instants were wrongly counted as quarters (found on AAPL).
+- **Recency bound (found on CNI):** only period-ends within 3 years of the company's latest reported period count. CNI's complete 2008–09 10-Q quarters were masking that its current results aren't in interim XBRL.
+
+### D45. SEC request discipline
+- **Who fetches:** the owner's User-Agent is passed only to the `worker` container, the only process that fetches.
+- **Rate:** all SEC clients in a process share one rate limiter (5 req/s). Every SEC task holds the procrastinate lock `sec`, so SEC jobs never run concurrently.
+- **Logging:** the User-Agent is never logged or stored, since fetch rows record URL and params only.
+
+### D46. Derived company fields can be rebuilt from the archive without network access
+- **What it does:** `rebuild_company_from_archive` (CLI `sec-rebuild-from-archive`) re-parses the latest archived submissions payload (hash-verified) and recomputes inferred fields from stored facts. It takes no HTTP client.
+- **When to use it:** when parsing or inference rules improve, apply them to existing companies without new SEC requests. Changes are audited with the source fetch id.
+- **Rule changes made in M2 and applied this way:**
+  - Country falls back to the incorporation code when the business address is absent. SEC code `Z4` = Canada (federal).
+  - Reporting currency uses the latest periodic filing, falling back to interim forms for 6-K-only filers such as CNI. Registration forms (F-10) are ignored.
+
 ## Pending decisions (need your input)
 
 | # | Decision | Needed by |

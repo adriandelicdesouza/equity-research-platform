@@ -54,6 +54,18 @@ Findings:
 - **API:** idle memory unchanged by the new dependencies (63.9 vs 65.8 MiB at M0).
 - **Host:** host swap shows 19 MiB in use; our containers can't swap. Ingestion workloads will be measured with the SEC adapter.
 
+### M2 SEC adapter — 2026-11-06, after live ingestion of 6 companies (88,160 facts)
+
+| Container | Limit | Current | Peak since last restart |
+|---|---|---|---|
+| web | 48 MiB | 10.2 | 12.8 |
+| api | 384 MiB | 64.2 | 79.0 |
+| worker | 576 MiB | 50.3 | 194.6 (archive rebuild over all 6 companies, the largest being MSFT at 33k facts) |
+| db | 576 MiB | 158.7 | 254.9 |
+
+- **Worker peak:** 194.6 MiB, about 34% of its cap. It was measured during `sec-rebuild-from-archive`, which loads every stored fact per company. The original live fetch ran before the latest container restart, so its peak wasn't captured.
+- **Database:** 53 MB after 6 companies.
+
 ### Still to measure
 
 - **Minecraft co-residency:** deferred to M5 by the owner (2026-11-06).

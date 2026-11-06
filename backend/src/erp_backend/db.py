@@ -42,3 +42,8 @@ def get_db() -> Iterator[Session]:
     """FastAPI dependency: one session per request; caller commits explicitly."""
     with _session_factory()() as session:
         yield session
+
+
+def new_session() -> Session:
+    """A standalone session for workers and CLI commands (caller closes it)."""
+    return _session_factory()()

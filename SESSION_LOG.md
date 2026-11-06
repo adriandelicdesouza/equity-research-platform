@@ -249,3 +249,45 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
     - Memory idle: worker 36 MiB, API unchanged (`docs/operations/memory.md`).
   - **No SEC request was made.** `ERP_SEC_USER_AGENT` is not configured anywhere. Every HTTP test uses `MockTransport`.
   - Docs: DECISIONS D40–D42; `docs/DEVELOPMENT.md` (jobs and archive section). Committed on `m2-ingestion`, not merged.
+- **SEC adapter (owner-approved; owner supplied the SEC User-Agent).**
+  - **Configuration:** the User-Agent is stored only in the git-ignored `.env.dev` and passed only to the `worker` container (D45). Verified that `.env*` are ignored and untracked, and that the contact string appears in no committable file and no worker log. The env examples carry an empty `ERP_SEC_USER_AGENT=` key.
+  - **Migration `0004`:**
+    - `market.companies`, `market.securities`, `market.company_identifiers`.
+    - `source.sec_tickers`, `source.filings`, `source.reported_facts` (bigint identity; `NULLS NOT DISTINCT` key including value). Append-only by trigger and grants (D43).
+  - **Code:**
+    - `ingestion/sec_parse.py`: ticker map, submissions and companyfacts parsers. Decimal values, strict errors.
+    - `ingestion/selection.py`: D11 total order (filed date → original before amendment → accession); `facts_as_of` cut-off; ambiguity and restatement detection.
+    - `ingestion/coverage.py`: D12/D44 interim coverage.
+    - `ingestion/sec_ingest.py`:
+      - ticker-map refresh (cached 1 day) and CIK resolution;
+      - submissions → profile, listings, filings;
+      - companyfacts → facts, standard/currency/coverage inference (audited);
+      - archive rebuild (D46).
+    - Process-wide 5 req/s limiter. Tasks `sec.refresh_ticker_map` and `sec.ingest_company` on queue `ingestion` with lock `sec`.
+    - CLI `sec-check-config`, `sec-ingest`, `sec-rebuild-from-archive`.
+    - `fetch_and_archive` now stamps the actual retrieval time.
+  - **Live SEC requests made: 13** (1 ticker map + submissions and companyfacts for AAPL, MSFT, SHOP, CNI, CNQ, RY).
+    - All HTTP 200, 0 errors; minimum spacing 0.245 s (≤ 5 req/s).
+    - 15 MB raw → 914 kB archived; 13/13 payloads re-hash correctly.
+    - Result: 6 companies, 7 securities, 8,799 filings, 88,160 facts; DB 53 MB.
+  - **Defects found by live data and fixed:**
+    1. 10-Q fiscal year-end comparatives were counted as interim quarters (AAPL/MSFT showed `partial`).
+    2. Stale 2008–09 quarters masked CNI's current gap; added a 3-year recency bound.
+    3. RY/CNQ/SHOP have no business address; country now falls back to the incorporation code (incl. `Z4` = Canada).
+    4. CNI files financials on 6-K; currency inference now falls back to interim periodic forms and ignores registration forms (F-10).
+    - Each has a regression test. They were applied to existing data with `sec-rebuild-from-archive` (no network), so the SEC request count stayed at 13.
+  - **Live results:**
+
+    | Company | Coverage | Country | Currency | Standard |
+    |---|---|---|---|---|
+    | AAPL | full | US | USD | US GAAP |
+    | MSFT | full | US | USD | US GAAP |
+    | SHOP | partial | CA | USD | US GAAP |
+    | CNI | none | CA | CAD | US GAAP |
+    | CNQ | none | CA | CAD | IFRS |
+    | RY | none | CA | CAD | IFRS (bank template limitation) |
+
+    - Selection on live data: order-independent for all 6; 0 ambiguous keys.
+    - Restatements were sampled and confirmed genuine (e.g. AAPL FY2008–09 assets after revenue-recognition adoption; EPS after splits).
+  - **Tests:** 111 backend tests (54 SEC-specific, mocked HTTP only). `make check` green: lint, 4 import contracts, mypy strict (59 files), 109 engine + 111 backend + 2 frontend.
+  - Memory after ingestion: worker peak 194.6 MiB in the archive rebuild (cap 576). Committed on `m2-ingestion`. Not merged, not pushed (no remote).

@@ -63,9 +63,10 @@ def defer(queue_app: procrastinate.App, task_name: str, **task_kwargs: Any) -> i
     bypass the synchronous connector created by :func:`sync_app`; bind explicitly instead.
     """
     task = app.tasks[task_name]
+    options: dict[str, Any] = {"queue": task.queue}
+    if task.lock:
+        options["lock"] = task.lock  # e.g. "sec": serialize jobs sharing a rate limit
     job_id: int = procrastinate.tasks.configure_task(
-        name=task_name,
-        job_manager=queue_app.job_manager,
-        queue=task.queue,
+        name=task_name, job_manager=queue_app.job_manager, **options
     ).defer(**task_kwargs)
     return job_id

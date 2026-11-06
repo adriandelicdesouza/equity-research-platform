@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -84,12 +85,13 @@ class ProviderClient:
     backoff_seconds: float = 1.0
     timeout_seconds: float = 30.0
     sleep: Callable[[float], None] = time.sleep
+    shared_limiter: RateLimiter | None = None
     limiter: RateLimiter = field(init=False)
 
     def __post_init__(self) -> None:
         if not self.user_agent.strip():
             raise ProviderNotConfiguredError(f"{self.provider_code}: User-Agent is required.")
-        self.limiter = RateLimiter(self.per_second, sleep=self.sleep)
+        self.limiter = self.shared_limiter or RateLimiter(self.per_second, sleep=self.sleep)
         self._client = httpx.Client(
             transport=self.transport,
             timeout=self.timeout_seconds,
@@ -143,6 +145,7 @@ def fetch_and_archive(
         row = ProviderFetch(
             provider_code=client.provider_code,
             url=redact_url(url),
+            retrieved_at=datetime.now(UTC),
             params=params or {},
             error=str(exc),
             request_id=current_request_id(),
@@ -154,6 +157,7 @@ def fetch_and_archive(
     row = ProviderFetch(
         provider_code=client.provider_code,
         url=redact_url(result.url),
+        retrieved_at=datetime.now(UTC),
         params=params or {},
         http_status=result.status,
         content_sha256=stored.sha256,
