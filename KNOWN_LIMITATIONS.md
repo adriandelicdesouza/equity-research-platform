@@ -114,7 +114,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
 - **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
 - **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
-- **Not built yet:** dataset versions (fiscal-period labels, persistence), derivations, integrity checks and the classifier. These are the next M2 steps. Concept mapping v1 exists (D49).
+- **Not built yet:** derivations other than Q4, integrity checks, conflict records and the classifier. These are the next M2 steps. Concept mapping v1 (D49) and versioned datasets (D50) exist.
 
 ## 4d. Standardization mapping v1 (M2)
 
@@ -124,6 +124,15 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **No-NCI fallbacks** (D49) assume no non-controlling interests when the "attributable to parent" concept is absent.
 - **Banks and insurers:** the v1 taxonomy is industrial. RY maps only about half of the items (no current/non-current split, no COGS or EBIT), as expected for a financial (D24 classification blocks DCF).
 - **Cover-page shares** (`dei:EntityCommonStockSharesOutstanding`) are not mapped. `BS.SHARES_OUTSTANDING` uses the balance-sheet tag; point-in-time share data comes with `fin.share_counts` (§7.7).
+
+## 4e. Versioned datasets (M2)
+
+- **Derived values:** only Q4 = FY − 9M exists. Quarterly cash-flow amounts (10-Q cash flows are year-to-date), gross profit, EBITDA, SG&A sums, net debt and FCF are not derived yet. LTM and stub periods are not built.
+- **Gaps stay gaps:** a fiscal year with no reported annual window (e.g. CNI 2021 in the stored facts) is absent, not interpolated. Values on dates that are not period ends, and windows before the first known fiscal year, are counted as unassigned in the dataset summary.
+- **Fiscal-year changes:** overlapping annual windows keep the better-supported one. Transition periods (10-KT) are not modelled.
+- **Conflicts:** within-filing ambiguity blocks locking. Cross-provider conflict records (`fin.data_conflicts`, §10.3) and their resolution/override workflow are not built yet, so ambiguous values cannot be resolved in-app yet.
+- **Cut-off granularity:** `facts_as_of` is a date (SEC filing dates carry no time). A filing ingested later with the same filing date as the cut-off would change a rebuild; verification reports this as an input change (`input_sha256`).
+- **Approval:** locking checks reproducibility and ambiguity only. The §5.3 integrity checks and the analyst-override rule are a later step.
 
 ## 5. Unresolved items
 

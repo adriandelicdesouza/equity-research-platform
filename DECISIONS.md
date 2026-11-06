@@ -331,6 +331,35 @@ These refine the approved architecture. None changes an approved methodology dec
 - **No-NCI fallbacks:** consolidated net income and total equity come last in the candidate lists for "attributable to the parent" items (`NetIncomeLoss`/`StockholdersEquity` in us-gaap, `ProfitLoss`/`Equity` in IFRS). They are flagged as fallbacks (priority > 1) and are only correct for companies without non-controlling interests; the integrity checks (§5.3) are the safeguard.
 - **Dependency:** `pyyaml` is declared directly in `erp-backend`. It was already in the lock and the image via `uvicorn[standard]`, so no new package was installed.
 
+### D50. Versioned standardized datasets: periods, lifecycle, Q4, byte-identical rebuilds (§3.3, §3.4, §4.4; D10, D11, D13)
+- **Fiscal periods** (`fin.fiscal_periods`, append-only, shared by versions):
+  - They come from the company's own reported windows, never from XBRL `fy`/`fp` or a calendar assumption.
+  - Fiscal years are the 350–380-day windows. When two annual windows overlap, the one carrying more values wins and the other is recorded as rejected.
+  - **Label:** the calendar year in which the fiscal year ends. A 52/53-week year ending in the first 7 days of January belongs to the previous year. `weeks` = 52/53 for 364/371-day years.
+  - **Interim:** quarters `Q1`–`Q4` and year-to-date `H1`/`9M`, the last two refining the blueprint's `H1` list. Quarters after the last fiscal year fall into the open next year.
+  - Balance-sheet dates attach to the FY, or to Q1–Q3, ending that day.
+  - LTM and STUB are not built yet.
+- **Eligible facts:** periodic-report forms (10-K, 20-F, 40-F, 10-Q, 6-K and amendments) filed on or before `facts_as_of`, which defaults to the latest such filing and is always stored. Registration and prospectus forms (F-10, 424B2, …) are excluded.
+- **Q4 = FY − 9M:**
+  - Only for `flow` items, and only when no Q4 is reported.
+  - Both inputs must be OK values of the same concept and sign.
+  - The 9M window must start on the fiscal-year start.
+  - Never for per-share or count items.
+  - Derived values carry `{"rule": "Q4=FY-9M"}`, both input values, both accessions and both source fact ids. Skipped derivations are counted by reason.
+- **Lifecycle** (`fin.financial_datasets`):
+  - A version is draft, then locked or discarded. Rows are never deleted.
+  - Version numbers increase per company and are never reused.
+  - One open draft per company. A build whose canonical bytes equal the current version creates nothing.
+  - The parent is the latest locked version, and the draft's summary records the diff against it, including whether the inputs or the mapping changed.
+- **Locking** requires:
+  - a successful verification (stored rows re-serialize to `content_sha256`, and a rebuild from the facts reproduces the same bytes);
+  - no ambiguous values (D13).
+- **Enforcement:** triggers bind every role, including the owner. Values are never updated, and are inserted or deleted only while their dataset is a draft. Datasets allow only the draft → locked or discarded transition, with nothing but the lifecycle fields changing. All transitions are audited.
+- **Canonical form:** sorted JSON with normalized decimals.
+  - Header: format, mapping version and SHA-256, taxonomy, currency, policy, cut-off, and `input_sha256` (a fingerprint of the eligible facts).
+  - Periods and values, with full provenance.
+  - Row ids and timestamps are excluded, so identical inputs give identical bytes.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

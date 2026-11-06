@@ -54,6 +54,8 @@ class StandardValue:
     restated: bool
     # Lower-priority concepts that also had a selection in this window (not used).
     alternatives: tuple[str, ...] = ()
+    # Filings that reported conflicting values for the winning concept (ambiguous only).
+    ambiguous_accessions: tuple[str, ...] = ()
 
     @property
     def duration_days(self) -> int | None:
@@ -114,6 +116,7 @@ def _resolve_item(
                 source=chosen if ok else None,
                 restated=sel.restated,
                 alternatives=tuple(c.concept for c, _ in found[1:]),
+                ambiguous_accessions=sel.ambiguous_accessions,
             )
         )
     return out

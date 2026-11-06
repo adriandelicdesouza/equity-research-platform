@@ -9,12 +9,18 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from erp_backend import audit
 from erp_backend.api.admin import create_user_record
 from erp_backend.auth.rbac import Role
 from erp_backend.db import get_db
 from erp_backend.errors import ApiError
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from erp_backend.models import Company
 
 
 def _create_user(args: argparse.Namespace) -> int:
@@ -191,6 +197,115 @@ def _sec_standardize_report(
     return 0
 
 
+def _company_by_ticker(db: Session, ticker: str) -> Company | None:
+    from sqlalchemy import select
+
+    from erp_backend.models import Company, Security
+
+    return db.scalars(
+        select(Company)
+        .join(Security, Security.company_id == Company.id)
+        .where(Security.ticker == ticker.upper())
+    ).first()
+
+
+def _dataset_build(ticker: str, policy_name: str, as_of: str | None) -> int:
+    import json
+    from datetime import date
+
+    from erp_backend.config import get_settings
+    from erp_backend.datasets import DatasetError, build_dataset
+    from erp_backend.db import new_session
+    from erp_backend.ingestion.selection import Policy
+
+    settings = get_settings()
+    with new_session() as db:
+        company = _company_by_ticker(db, ticker)
+        if company is None:
+            print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+            return 1
+        try:
+            result = build_dataset(
+                db,
+                company,
+                mappings_root=settings.mappings_root,
+                mapping_version=settings.mapping_version,
+                policy=Policy(policy_name),
+                facts_as_of=date.fromisoformat(as_of) if as_of else None,
+            )
+        except DatasetError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+        d = result.dataset
+        state = "created" if result.created else "unchanged (identical to current version)"
+        print(f"{company.legal_name}: dataset v{d.version_no} {d.status} — {state}")
+        print(f"  id {d.id}\n  content_sha256 {d.content_sha256}\n  values {d.value_count}")
+        print(f"  summary {json.dumps(d.source_summary, sort_keys=True)}")
+    return 0
+
+
+def _dataset_list(ticker: str) -> int:
+    from sqlalchemy import select
+
+    from erp_backend.db import new_session
+    from erp_backend.models import FinancialDataset
+
+    with new_session() as db:
+        company = _company_by_ticker(db, ticker)
+        if company is None:
+            print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+            return 1
+        for d in db.scalars(
+            select(FinancialDataset)
+            .where(FinancialDataset.company_id == company.id)
+            .order_by(FinancialDataset.version_no)
+        ):
+            print(
+                f"v{d.version_no} {d.status:<9} {d.id} {d.selection_policy} as of "
+                f"{d.facts_as_of} mapping {d.mapping_version} values {d.value_count} "
+                f"sha {d.content_sha256[:16]}"
+            )
+    return 0
+
+
+def _dataset_action(action: str, dataset_id: str, reason: str | None) -> int:
+    import uuid
+
+    from erp_backend.config import get_settings
+    from erp_backend.datasets import (
+        DatasetError,
+        discard_dataset,
+        lock_dataset,
+        verify_dataset,
+    )
+    from erp_backend.db import new_session
+    from erp_backend.models import FinancialDataset
+
+    root = get_settings().mappings_root
+    with new_session() as db:
+        try:
+            if action == "verify":
+                dataset = db.get(FinancialDataset, uuid.UUID(dataset_id))
+                if dataset is None:
+                    raise DatasetError(f"No dataset {dataset_id}")
+                check = verify_dataset(db, dataset, mappings_root=root)
+                print(f"{'OK' if check.ok else 'FAILED'}: {check}")
+                return 0 if check.ok else 1
+            if not reason:
+                raise DatasetError("--reason is required")
+            if action == "lock":
+                d = lock_dataset(db, uuid.UUID(dataset_id), mappings_root=root, reason=reason)
+            else:
+                d = discard_dataset(db, uuid.UUID(dataset_id), reason=reason)
+            db.commit()
+        except DatasetError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"dataset {d.id} v{d.version_no}: {d.status}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -223,6 +338,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     std.add_argument("--as-of", help="Only facts filed on or before this date (YYYY-MM-DD).")
     std.add_argument("--all", action="store_true", help="Show every mapped line item.")
+    dsb = sub.add_parser(
+        "dataset-build", help="Build a draft standardized dataset version from stored facts."
+    )
+    dsb.add_argument("--ticker", required=True)
+    dsb.add_argument(
+        "--policy", choices=["latest_reported", "first_reported"], default="latest_reported"
+    )
+    dsb.add_argument("--as-of", help="Facts cut-off (YYYY-MM-DD); default: latest filing.")
+    dsl = sub.add_parser("dataset-list", help="List dataset versions of a company.")
+    dsl.add_argument("--ticker", required=True)
+    for name, text in (
+        ("dataset-verify", "Re-serialize and rebuild a dataset; check byte-identity."),
+        ("dataset-lock", "Lock a verified draft dataset (immutable afterwards)."),
+        ("dataset-discard", "Discard a draft dataset (its values are removed)."),
+    ):
+        act = sub.add_parser(name, help=text)
+        act.add_argument("--id", required=True)
+        if name != "dataset-verify":
+            act.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -234,6 +368,13 @@ def main(argv: list[str] | None = None) -> int:
         return _sec_ingest(args.ticker, args.cik)
     if args.command == "sec-rebuild-from-archive":
         return _sec_rebuild()
+    if args.command == "dataset-build":
+        return _dataset_build(args.ticker, args.policy, args.as_of)
+    if args.command == "dataset-list":
+        return _dataset_list(args.ticker)
+    if args.command in ("dataset-verify", "dataset-lock", "dataset-discard"):
+        action = args.command.split("-", 1)[1]
+        return _dataset_action(action, args.id, getattr(args, "reason", None))
     if args.command == "sec-standardize-report":
         return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover

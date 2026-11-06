@@ -370,3 +370,20 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - Decision D49; limitations in KNOWN_LIMITATIONS §4d.
 - **Checked against stored real facts:** the key values for AAPL, MSFT, SHOP, CNI, CNQ and RY match the published figures. Annual coverage per year: AAPL 60–61/78, MSFT 60–61/78, CNI 60/78, SHOP 53–54/78, CNQ 52/72, RY 38/72 (bank). The candidate lists gained the MSFT debt-flow concepts and the IFRS no-NCI fallbacks.
 - **Tests:** 41 new (backend 111 → 152). `make check` passes. Dev DB migrated `0004 → 0005` by the migrate container. No network requests.
+
+### Session 3, continued — M2 versioned financial datasets (2026-11-06)
+
+- **Task:** NEXT_SESSION item 2.
+- **Built:**
+  - pure fiscal periods (`standardization/periods.py`);
+  - pure dataset build with Q4 = FY − 9M, canonical JSON and hashes (`standardization/dataset.py`);
+  - the service (`erp_backend/datasets.py`): build, verify, lock and discard, all audited;
+  - migration `0006`: the `fin` schema, with lifecycle triggers that bind every role;
+  - five `dataset-*` CLI commands; decision D50; KNOWN_LIMITATIONS §4e.
+  - `resolve.StandardValue` now also carries the accessions behind an ambiguous value.
+- **Real data** (dev DB, migrated `0005 → 0006`): draft v1 built for AAPL (5,090 values, 422 derived Q4), MSFT (5,965), SHOP (1,189), CNI (1,170), CNQ (543, FY only: no interim XBRL) and RY (1,616).
+  - All six verify byte-identically. Rebuilding AAPL created nothing.
+  - The AAPL and CNI content hashes equal those of an earlier host-side build of the same facts.
+  - AAPL FY2026: Q1 + Q2 + Q3 + derived Q4 = FY revenue (478,834 M).
+  - Nothing was locked in dev.
+- **Tests:** 43 new (backend 152 → 195). `make check` passes. Dev stack stopped. No network requests.
