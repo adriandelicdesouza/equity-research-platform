@@ -343,3 +343,15 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
 | `da3d4fb` | `e6b0e5a` | `92e31ed` | feat(m2): SEC EDGAR adapter — companies, filings, facts, selection, coverage |
 
 - **Statements that are now historical:** earlier entries that say "author metadata contains the owner's Gmail" or give the author's former local username describe the state before these rewrites.
+
+### Session 3, continued — initial GitHub publication (2026-11-06)
+
+- **Published (owner-approved)** to `https://github.com/adriandelicdesouza/equity-research-platform` (public). `main` is the default branch.
+- **Branch tips, verified identical locally and on `origin` with `git ls-remote`:**
+  - `main`: `9ef5594a8e732e260a382b36be5275d6dea62464`
+  - `m2-ingestion`: `51cd1fa31244d4f9074080e4c431fede3af4746f`
+  - `m0-foundation`: `c5281b4ec45d5900cd1880b38ff499aad2eb5d89`
+  - `m1-engine`: `2dee8b8f0ce4f10c2cb98fafe6ea171113e583bf`
+- **Before the push:** an MIT `LICENSE` (GitHub detects it as MIT) and README sections for the AI disclosure, license and testing were added to both `main` (`9ef5594`) and `m2-ingestion` (`51cd1fa`). The `main` README describes only M0 and M1.
+- **`make check`** passed on `m2-ingestion` (engine 109, backend 111, frontend 2 tests).
+- **No merge, force-push or history rewrite.** `main` and `m2-ingestion` each have a separate README commit, so the future merge will conflict on `README.md`: keep the `m2-ingestion` version.

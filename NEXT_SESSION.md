@@ -5,8 +5,9 @@
 ## State at close (verified)
 
 - **Branches:**
-  - **`main`** @ `e3c17bc`: M0 + M1 (valuation engine), merged.
-  - **`m2-ingestion`** @ `92e31ed` (current branch): M2 ingestion foundation + **SEC adapter (complete, do not rebuild)**. Two commits ahead of `main`. **Not merged.**
+  - **`main`** @ `9ef5594`: M0 + M1 (valuation engine), plus the LICENSE/README commit. Default branch on GitHub.
+  - **`m2-ingestion`** (current branch): M2 ingestion foundation + **SEC adapter (complete, do not rebuild)**. **Not merged.** Merging will conflict on `README.md`: keep the `m2-ingestion` version.
+  - Published state: see `SESSION_LOG.md` → "initial GitHub publication".
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
 - **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
