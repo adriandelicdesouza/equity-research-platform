@@ -1,0 +1,37 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# JavaScript
+node_modules/
+dist/
+build/
+
+# Application data
+data/
+datasets/
+uploads/
+documents/
+backups/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
