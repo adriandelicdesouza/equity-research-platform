@@ -114,7 +114,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Inferred fields:** reporting currency and accounting standard are inferred (flagged `accounting_standard_inferred`) until an analyst confirms them. Country comes from the SEC business-address code, falling back to the incorporation code when the address is absent (US states and Canadian provinces/federal only). Incorporation can differ from headquarters.
 - **companyfacts limits:** no dimensional (segment) facts and no `decimals`, so restatement detection compares exact values.
 - **Listings:** securities come from SEC submissions (US exchanges). TSX listings are added manually (D15). Exchanges without a known MIC keep the SEC exchange name.
-- **Not built yet:** the classifier (next M2 step). Mapping (D49), versioned datasets (D50), integrity checks and derivations (D51) and data conflicts (D52) exist.
+- **M2 standardization steps built:** mapping (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52), classifier (D53). Remaining M2 work: market/rates providers and the Excel/CSV import.
 
 ## 4d. Standardization mapping v1 (M2)
 
@@ -166,6 +166,15 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Reporting precision** in the check tolerance (D51) is inferred from trailing zeros; perfectly round values (rare in filings) widen it.
 - **Dev data:** one demonstration resolution exists for MSFT FY2016 equity, using the first-reported value because liabilities + original equity = reported assets exactly. Every other conflict is open; nothing is locked.
 
+## 4h. Financial-business classification (M2)
+
+- **SIC list** comes from Blueprint §7.6.1 and the standard SIC titles. It was not re-checked against the live SEC SIC page (no new network request was made).
+- **XBRL evidence covers balance-sheet dominance only.** Income-statement signals (interest or premium revenue share) and asset managers/brokers (fee revenue) are not measured, so `asset_manager_broker` comes from SIC alone.
+- **Thresholds** (25% / 50%) are judgement defaults, not calibrated on a broad sample; only six companies were checked (RY → bank; five industrials → non_financial).
+- **Run on demand:** suggestions are created by `classify`, not automatically after ingestion. Datasets don't record the classification.
+- **No confirmations exist in dev data.** All six companies are effectively `needs_review` until an analyst confirms.
+- **Interim coverage** still uses the industrial template, so banks can show `partial`/`none` (§4c). A bank template keyed on the confirmed class is open.
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.
@@ -175,7 +184,7 @@ Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.
 3. Cloudflare hostname + Access policy: needed for remote access (P3).
 4. Permission to start the game server for the co-residency test: deferred to M5 (P4).
 5. Whether to bind the HTTPS listener to the LAN as well as Tailscale (P5).
-6. Exact SIC ranges for classification still need checking against the SEC list (M2, classifier step).
+6. Exact SIC ranges for classification are taken from the Blueprint and standard SIC titles; not yet re-checked against the live SEC list (§4h).
 7. Whether free total-return indices are available (to verify with the Yahoo provider, M2).
 8. ~~Not yet published~~: all four branches are on GitHub as of 2026-11-06 (P12). That is an off-machine copy of the code only; runtime data still has no off-server backup (P2).
 9. ~~Commit author metadata contained the owner's Gmail~~: resolved by the history rewrites (D47).

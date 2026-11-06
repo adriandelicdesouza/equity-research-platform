@@ -414,6 +414,52 @@ def _dataset_rebuild(ticker: str, reason: str) -> int:
     return 0
 
 
+def _classify(tickers: list[str]) -> int:
+    import json
+
+    from erp_backend.classifications import effective_classification, suggest_classification
+    from erp_backend.db import new_session
+
+    with new_session() as db:
+        for ticker in tickers:
+            company = _company_by_ticker(db, ticker)
+            if company is None:
+                print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+                return 1
+            result = suggest_classification(db, company)
+            s = result.suggestion
+            print(
+                f"{company.legal_name}: suggested {s.classification} — {s.rationale} "
+                f"({'stored' if result.created else 'unchanged'}); "
+                f"effective {effective_classification(company)}"
+            )
+            for e in s.evidence:
+                print(f"    {json.dumps(e.as_dict(), sort_keys=True)}")
+            for note in s.notes:
+                print(f"    note: {note}")
+        db.commit()
+    return 0
+
+
+def _classification_confirm(ticker: str, classification: str, reason: str) -> int:
+    from erp_backend.classifications import ClassificationError, confirm_classification
+    from erp_backend.db import new_session
+
+    with new_session() as db:
+        company = _company_by_ticker(db, ticker)
+        if company is None:
+            print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
+            return 1
+        try:
+            row = confirm_classification(db, company, classification, reason=reason)
+        except ClassificationError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+        print(f"{company.legal_name}: confirmed {row.classification} (record {row.id})")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -485,6 +531,20 @@ def main(argv: list[str] | None = None) -> int:
     rb = sub.add_parser("dataset-rebuild", help="Discard the open draft and build a new one.")
     rb.add_argument("--ticker", required=True)
     rb.add_argument("--reason", required=True)
+    cls = sub.add_parser(
+        "classify", help="Suggest a financial-business classification (SIC + XBRL evidence)."
+    )
+    cls.add_argument("--ticker", action="append", required=True)
+    cc = sub.add_parser("classification-confirm", help="Confirm a company's classification.")
+    cc.add_argument("--ticker", required=True)
+    cc.add_argument(
+        "--class",
+        dest="classification",
+        required=True,
+        choices=["bank", "insurer", "specialty_lender", "reit", "asset_manager_broker",
+                 "investment_holding", "non_financial"],
+    )  # fmt: skip
+    cc.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -509,6 +569,10 @@ def main(argv: list[str] | None = None) -> int:
         return _conflict_resolve(args)
     if args.command == "dataset-rebuild":
         return _dataset_rebuild(args.ticker, args.reason)
+    if args.command == "classify":
+        return _classify(args.ticker)
+    if args.command == "classification-confirm":
+        return _classification_confirm(args.ticker, args.classification, args.reason)
     if args.command == "sec-standardize-report":
         return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover

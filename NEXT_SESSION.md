@@ -11,8 +11,8 @@
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
 - **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
-- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0008`, 6 SEC companies, 88,160 facts. Per company, a verified format-3 **draft** with conflicts: MSFT v4, others v3; earlier versions discarded. One demonstration resolution (MSFT FY2016 equity). None locked: locking is the analyst's call, and MSFT/RY/AAPL have open material conflicts.
-- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52). Pushing needs owner approval.
+- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0009`, 6 SEC companies, 88,160 facts. Per company, a verified format-3 **draft** with conflicts: MSFT v4, others v3; earlier versions discarded. One demonstration resolution (MSFT FY2016 equity). None locked: locking is the analyst's call, and MSFT/RY/AAPL have open material conflicts. Classifier suggestions are stored (RY → bank, others → non_financial); none confirmed.
+- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52), classifier (D53). Pushing needs owner approval.
 - **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
 
 ## Rules for this session (owner instructions)
@@ -43,8 +43,8 @@ Then ask the owner about the open decisions below. Only the commit question matt
 2. ~~Versioned financial datasets~~ **done** (D50): `erp_backend.datasets` (service), `standardization/{periods,dataset}.py` (pure), migration `0006`, CLI `dataset-build|list|verify|lock|discard`. Limitations: KNOWN_LIMITATIONS §4e.
 3. ~~Balance and consistency checks; derivations~~ **done** (D51): `standardization/{validation,derivations}.py`, `fin.validation_results`, mapping v2 (`CF.FCF`), migration `0007`. Real findings (splits, mixed vintages, RY EPS numerator): KNOWN_LIMITATIONS §4f.
 4. ~~Data-conflict detection and handling~~ **done** (D52): `standardization/conflicts.py`, `fin.data_conflicts`, `fin.conflict_resolutions`, migration `0008`, CLI `conflict-list`, `conflict-resolve`, `dataset-rebuild`. Limitations: KNOWN_LIMITATIONS §4g.
-5. **Financial-business classification (next)** (§7.6.1, D24): SIC plus XBRL evidence, suggested vs confirmed. **RY must classify as `bank`** (DCF blocked). Handle insurers, specialty lenders, REITs, asset managers/brokers and holdings. Verify the SIC lists against the SEC list. Fix the bank gap in interim-coverage templates (KNOWN_LIMITATIONS §4c).
-6. **Yahoo Finance (unofficial chart endpoint)** (§4.2, §4.5, D15, D16):
+5. ~~Financial-business classification~~ **done** (D53): `classification.py` (pure), `classifications.py` (service), migration `0009`, CLI `classify`, `classification-confirm`. Open: bank template for interim coverage, auto-suggest after ingestion (KNOWN_LIMITATIONS §4h).
+6. **Yahoo Finance (unofficial chart endpoint) (next)** (§4.2, §4.5, D15, D16):
    - prices, splits and dividends;
    - manual TSX listing entry with symbol validation;
    - adjusted-close verification.
@@ -76,6 +76,7 @@ Then request owner review, and only after approval, the merge to `main`.
 - **SEC:**
   - enqueue: `docker exec erp-dev-api-1 python -m erp_backend.cli sec-ingest --ticker XYZ`
   - rebuild without network: `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-rebuild-from-archive`
+- **Classification:** `classify --ticker RY`, then `classification-confirm --ticker RY --class bank --reason "…"` (analyst decision).
 - **Conflicts:** `conflict-list --id DATASET [--all]`, then `conflict-resolve --id DATASET --key KEY (--select FACT | --value V --source S | --override | --revoke) --reason "…"`. This rebuilds the draft.
 - **Datasets:** `docker exec erp-dev-worker-1 python -m erp_backend.cli dataset-build --ticker AAPL`, then `dataset-verify --id …`, `dataset-lock --id … --reason …`.
 - **Mapping coverage:** `docker exec erp-dev-worker-1 python -m erp_backend.cli sec-standardize-report --ticker AAPL [--all] [--as-of YYYY-MM-DD]`.

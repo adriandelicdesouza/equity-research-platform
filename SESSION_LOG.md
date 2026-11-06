@@ -427,3 +427,17 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - **Locking:** refused for MSFT and RY.
   - **Demonstration resolution 1** (MSFT FY2016 equity → first-reported 71,997M; reason documented): draft v4 built. Its FY2016 balance check passes with a difference of 0 (previously a $11.1B failure). The v3 conflict history and the audit trail are kept. Nothing locked.
 - **Tests:** 29 new (backend 226 → 255). `make check` passes. Dev stack stopped. No network requests.
+
+### Session 3, continued — M2 financial-business classification (2026-11-06)
+
+- **Task:** NEXT_SESSION item 5, after data conflicts were committed (`0f5ee7f`).
+- **Built:**
+  - pure SIC + XBRL-dominance classifier (`classification.py`);
+  - service (`classifications.py`): stored suggestions, reason-required confirmations, audit;
+  - migration `0009`: `market.company_classifications`, append-only;
+  - CLI `classify` / `classification-confirm`; decision D53; KNOWN_LIMITATIONS §4h.
+- **Dev DB** (migrated `0008 → 0009`):
+  - **RY → `bank`:** SIC 6029 agrees with deposits = 39.6% of liabilities; insurance contracts at 1.1% listed as weak evidence.
+  - **AAPL, MSFT, SHOP, CNI, CNQ → `non_financial`.**
+  - No confirmations, so every company is effectively `needs_review` until the analyst confirms.
+- **Tests:** 15 new (backend 255 → 270). `make check` passes. Dev stack stopped. No network requests.

@@ -408,6 +408,29 @@ These refine the approved architecture. None changes an approved methodology dec
   - **Locking is refused while any material conflict is open**, enforced in the service and the trigger. Overridden conflicts are allowed, as the documented override path.
 - **Audit:** `conflicts_detected` (per build, with the open material keys), `conflict_resolved` / `conflict_overridden` / `conflict_resolution_revoked` (before: candidates, status, previous resolution; after: the decision; with the reason), plus the dataset discard and create events.
 
+### D53. Financial-business classifier: suggestion with evidence, analyst confirmation (§7.6.1; D24)
+- **Pure classifier** (`erp_backend/classification.py`, version 1.0.0). Its class names equal the engine's `Classification` values, so the engine's R1 policy gate applies unchanged and no second policy table was created.
+- **Evidence:**
+  - **SIC:** the Blueprint §7.6.1 lists. 6500–6599 (real-estate operators) always need review.
+  - **XBRL balance-sheet dominance** at the latest balance-sheet date (latest-reported values):
+
+    | Class | Ratio | Threshold |
+    |---|---|---|
+    | bank | deposits / liabilities | 25% |
+    | insurer | insurance-contract liabilities / liabilities | 25% |
+    | specialty lender | loans / assets | 50% |
+    | REIT | investment property / assets | 50% |
+    | investment holding | investments at fair value / assets | 50% |
+
+    At or above the threshold is strong evidence. Below it is weak: listed, not decisive. A total concept is preferred over its components.
+- **Decision:**
+  - SIC and XBRL agree → that class.
+  - They disagree, or a financial XBRL signal meets a non-financial SIC → `needs_review`.
+  - Only one source → that class (IFRS filers without a usable SIC rely on XBRL).
+  - Neither → `non_financial`.
+- **Storage** (`market.company_classifications`, append-only, migration `0009`): every suggestion (stored only when its evidence changes) with SIC, ratios and concepts, and every confirmation with a required reason (≥ 10 characters; `needs_review` can't be confirmed). Both are audited.
+- **Effective class:** the latest confirmation, mirrored in `market.companies.financial_classification`. Until one exists it is `needs_review`, which blocks saving a valuation. A suggestion is never used automatically.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

@@ -11,7 +11,12 @@ from erp_backend.models.fin import (
     FiscalPeriodRow,
     ValidationResult,
 )
-from erp_backend.models.market import Company, CompanyIdentifier, Security
+from erp_backend.models.market import (
+    Company,
+    CompanyClassification,
+    CompanyIdentifier,
+    Security,
+)
 from erp_backend.models.source import (
     Filing,
     Provider,
@@ -24,6 +29,7 @@ __all__ = [
     "AuditEvent",
     "Base",
     "Company",
+    "CompanyClassification",
     "CompanyIdentifier",
     "ConflictResolution",
     "DataConflict",
