@@ -9,7 +9,7 @@
   - **`m2-ingestion`** @ `92e31ed` (current branch): M2 ingestion foundation + **SEC adapter (complete, do not rebuild)**. Two commits ahead of `main`. **Not merged.**
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
-- **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public, **empty**). **Nothing has been pushed** (P12).
+- **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
 - **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0004`, 6 SEC companies, 88,160 facts.
 - **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
 
@@ -69,9 +69,7 @@ Then request owner review, and only after approval, the merge to `main`.
 
 ## Open owner decisions (`DECISIONS.md` → Pending)
 
-- **P12 Publication:** push all four branches (`main`, `m2-ingestion`, `m0-foundation`, `m1-engine`) to `origin`. Only with explicit approval.
-- **P10 License:** owner's choice. Don't pick one.
-- **P11 Public vs internal docs:** a recommended structure was given in the Session 3 report. Don't move or exclude files without approval.
+- The repository is **public**: anything committed and pushed is published. Keep the D48 rules.
 - **P9:** first live request per new provider (items 6–9).
 - **Host security follow-up:** the owner holds a separate host-security checklist, kept outside this repository. It concerns host configuration, which is out of scope: don't change it.
 - P2/P4 deferred to M5; P3/P5/P6 later.

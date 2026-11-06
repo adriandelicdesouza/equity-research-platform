@@ -127,9 +127,9 @@ Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.
 5. Whether to bind the HTTPS listener to the LAN as well as Tailscale (P5).
 6. Exact SIC ranges for classification still need checking against the SEC list (M2, classifier step).
 7. Whether free total-return indices are available (to verify with the Yahoo provider, M2).
-8. **Not yet published:** `origin` exists (public, empty), but nothing is pushed, so there is still no off-machine copy of the code (P7, P12).
+8. ~~Not yet published~~: all four branches are on GitHub as of 2026-11-06 (P12). That is an off-machine copy of the code only; runtime data still has no off-server backup (P2).
 9. ~~Commit author metadata contained the owner's Gmail~~: resolved by the history rewrites (D47).
-10. **No license** (P10): the code is all rights reserved by default.
+10. ~~No license~~: MIT since 2026-11-06 (P10).
 
 ## 6. Outside this project
 

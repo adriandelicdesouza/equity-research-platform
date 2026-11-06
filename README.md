@@ -79,6 +79,18 @@ Then open `http://localhost:8091`. All dev ports bind to loopback only.
 
 Only free, public sources are used. SEC EDGAR is implemented. Other planned providers and their limitations are listed in `KNOWN_LIMITATIONS.md`. No financial data is bundled in this repository; fetched data stays in git-ignored local storage.
 
+## Testing
+
+`make check` runs everything: Ruff lint and format checks, import-boundary checks, mypy, ESLint, the TypeScript compiler, and the engine, backend and frontend test suites. Individual suites: `make test-engine`, `make test-backend` (needs the dev stack running, for its database), `make test-frontend`. The engine suite includes golden-output tests. After an intended calculation change, bump `engine/src/erp_engine/version.py` and regenerate them with `ERP_UPDATE_GOLDEN=1 make test-engine`.
+
 ## Project status and contributions
 
-This is a personal project in active development. Interfaces and schemas may change. No license has been chosen yet, so all rights are reserved by the author until a license is added.
+This is a personal project in active development. Interfaces and schemas may change. Design history is kept in the repository (`DECISIONS.md`, `SESSION_LOG.md`).
+
+## AI disclosure
+
+This project was developed with substantial help from AI tools, including Claude Code. AI assistance contributed code, documentation, tests and architectural work. The maintainer directs the work and is responsible for reviewing, validating and maintaining it. AI assistance does not guarantee correctness, security or completeness, so verify results independently. No AI provider endorses or sponsors this project.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Adrian Delic de Souza. Third-party dependencies remain under their own licenses.

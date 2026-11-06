@@ -344,9 +344,9 @@ Status as of 2026-11-06 (end of Session 3).
 | P4 | Start the co-resident game server for the co-residency test | Open, **deferred to M5** (owner instruction); never start it without approval |
 | P5 | Optional: LAN binding; `tailscale serve` instead of internal CA | Open, optional |
 | P6 | Optional: registering free-key data providers | Open: Release 3 |
-| P7 | **Git remote (backup/sync)**: `origin` = `adriandelicdesouza/equity-research-platform` (public, created by the owner, still empty). **Publication (push) awaits owner approval.** | Open: push requires owner approval (P12) |
+| P7 | **Git remote (backup/sync)**: `origin` = `adriandelicdesouza/equity-research-platform` (public, created by the owner). | **Resolved** 2026-11-06: all four branches published (P12) |
 | P8 | **Git author identity** | **Resolved** 2026-11-06 (D47): history rewritten to `Adrian Delic de Souza <contact@delicsouza.com>`; repository-local `user.email` set |
 | P9 | Approval for the first live request to each new provider (Yahoo, US Treasury, Bank of Canada, Damodaran) | Open: before each provider's first live request (M2) |
-| P10 | **License**: none chosen. All rights reserved by default; public viewers may view/fork on GitHub but receive no reuse rights | Open: owner's choice before or after publication |
-| P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | Open: recommendation pending owner approval |
-| P12 | **Publication**: push of `main` and `m2-ingestion` to `origin` | Open: owner approval required |
+| P10 | **License** | **Resolved** 2026-11-06: MIT (owner's choice), `LICENSE`, copyright Adrian Delic de Souza |
+| P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | **Resolved** 2026-11-06: owner keeps the current structure; internal docs are published as is |
+| P12 | **Publication**: push of `main`, `m2-ingestion`, `m0-foundation` and `m1-engine` to `origin` | **Resolved** 2026-11-06: owner-approved; pushed without force, `main` is the default branch |
