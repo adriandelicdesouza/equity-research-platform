@@ -441,3 +441,16 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - **AAPL, MSFT, SHOP, CNI, CNQ → `non_financial`.**
   - No confirmations, so every company is effectively `needs_review` until the analyst confirms.
 - **Tests:** 15 new (backend 255 → 270). `make check` passes. Dev stack stopped. No network requests.
+
+### Session 3, continued — M2 market-data boundary and offline Yahoo adapter (2026-11-06)
+
+- **Task:** NEXT_SESSION item 6, offline part only. No network requests were made and `yahoo_chart` stays disabled.
+- **Built:**
+  - `erp_backend/market/`: `model.py` (normalized types, provider protocol, validation), `yahoo.py` (symbol rule, request builder, gated client, parser), `adjust.py` (split factors, share and per-share restatement, close-basis inference, adjusted-close recomputation, dated close), `store.py` (idempotent append-only storage, gated fetch, archive re-ingestion);
+  - migration `0010`: `market.price_observations`, `market.corporate_actions`, `market.provider_listings`;
+  - decision D54; KNOWN_LIMITATIONS §4i.
+- **Bugs found and fixed during testing:**
+  - the backwards split factor accumulated Decimal rounding (now an exact single inversion);
+  - batched inserts reported `rowcount = -1` (insert counts now use `RETURNING`).
+- **Dev DB:** migrated `0009 → 0010`; the new tables are empty. Synthetic test data went only into the disposable `erp_test` database.
+- **Tests:** 38 new (backend 270 → 308), including an Apple EPS split regression on fixture values. The stored datasets are unchanged.

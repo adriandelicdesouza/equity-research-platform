@@ -431,6 +431,44 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Storage** (`market.company_classifications`, append-only, migration `0009`): every suggestion (stored only when its evidence changes) with SIC, ratios and concepts, and every confirmation with a required reason (≥ 10 characters; `needs_review` can't be confirmed). Both are audited.
 - **Effective class:** the latest confirmation, mirrored in `market.companies.financial_classification`. Until one exists it is `needs_review`, which blocks saving a valuation. A suggestion is never used automatically.
 
+### D54. Market-data provider boundary, Yahoo adapter (offline), corporate actions (§4.1, §4.5; D15, D16)
+- **Reused, not duplicated:**
+  - `source.providers` (`yahoo_chart` is seeded disabled, and `enabled` is the owner's gate);
+  - `ProviderClient` + `fetch_and_archive` (archive-first; provenance in `provider_fetches`);
+  - `market.securities` + `provider_symbols` (instrument identity: one listing per exchange, provider symbol per listing).
+
+  SEC ingestion is unchanged.
+- **Provider-neutral package `erp_backend/market/`:**
+  - **`model.py`:** normalized `PriceBar`, `Split`, `CashDividend`, `InstrumentMeta`, `PriceHistory` with issues, and the `MarketDataProvider` protocol (`history_url`, `parse_history`).
+  - **`adjust.py`:** split factors, restating share counts and per-share amounts, close-basis inference, adjusted-close recomputation, dated latest close.
+  - **`store.py`:** idempotent persistence, gated fetch, archive re-ingestion.
+
+  Provider field names and parsing live only in `yahoo.py`.
+- **Price semantics are explicit:** `close` carries a `close_basis` (`raw` / `split_adjusted` / `unverified`), and `adj_close` is stored separately with its own basis. A missing adjusted close is never filled from the close, or vice versa. A provider's live quote is kept in the listing snapshot and is never a valuation price: valuations use a dated close (`latest_close`, §4.5).
+- **Yahoo specifics, not verified and therefore not assumed:**
+  - whether `close` is raw or split-adjusted (`unverified` until `infer_close_basis` reads the move across a real split);
+  - how `adjclose` is computed (`unverified`);
+  - the currency of dividends (`meta.currency`, marked `assumed_quote_currency`).
+
+  Trade dates use the payload's `gmtoffset`, not the host's time-zone database. Symbols follow D15: XTSE → `.TO`, XTSX → `.V`, US tickers as-is, share-class dots → dashes. Unknown exchanges need manual entry.
+- **Network gate:** `yahoo_client` refuses unless `source.providers.enabled` is true for `yahoo_chart`. No code enables it. The User-Agent is generic and carries no personal contact data.
+- **Splits and share counts:**
+  - A split is `numerator / denominator` new shares per old (a 1-for-10 reverse split is 1/10).
+  - A reported share count's basis date is its filing date: splits before issuance are applied retroactively under ASC 260 / IAS 33, later ones are not.
+  - Restating to a reference date multiplies by Π factor over `basis < ex_date ≤ reference`; going backwards uses the exact inverse. Per-share amounts divide.
+  - The reported value is never modified. `AdjustedAmount` keeps the reported value, factor, adjusted value and the splits applied.
+- **Persistence** (migration `0010`, append-only, exact-repeat idempotent through unique indexes over every observed field):
+  - `market.price_observations`: a changed value (e.g. a revised adjusted close) is a new row, and `current_prices` reads the latest per date. This refines the blueprint's `market.prices`, which would have overwritten revisions.
+  - `market.corporate_actions`;
+  - `market.provider_listings`: currency, exchange, time zone, instrument type, quote.
+
+  Each row references the fetch that first delivered it. Storing is refused when the payload's symbol or currency doesn't match the listing.
+- **How observations will feed models** (not wired yet, deliberately):
+  - The valuation's current price will be a dated close plus provenance in the run's input document.
+  - Validated splits will restate weighted and point-in-time share counts in a dataset build, as a new dataset format recording `actions_as_of`, and the EPS checks will compare like-for-like bases.
+  - Dividends feed FCFE/DDM history and adjusted-return series for beta.
+  - None of this changes reported facts or existing locked datasets.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

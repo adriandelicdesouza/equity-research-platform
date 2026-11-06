@@ -11,8 +11,8 @@
 - **History rewritten twice (owner-approved, D47).** Author/committer is `Adrian Delic de Souza <contact@delicsouza.com>`, and infrastructure details are redacted (D48). All hashes changed; the mapping is in `SESSION_LOG.md`. Backups (timestamped `20261106T141410Z` and `20261106T142726Z`) are kept outside the repository.
 - **Committed:** the Session 3 handoff updates, `README.md`, the new `docs/CONFIGURATION.md` and the game-server wording generalization are committed on `m2-ingestion`. Working tree clean.
 - **Remote:** `origin` = `github.com/adriandelicdesouza/equity-research-platform` (public). All four branches published 2026-11-06 with upstream tracking (P12). Push new commits normally; never force-push.
-- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0009`, 6 SEC companies, 88,160 facts. Per company, a verified format-3 **draft** with conflicts: MSFT v4, others v3; earlier versions discarded. One demonstration resolution (MSFT FY2016 equity). None locked: locking is the analyst's call, and MSFT/RY/AAPL have open material conflicts. Classifier suggestions are stored (RY → bank, others → non_financial); none confirmed.
-- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52), classifier (D53). Pushing needs owner approval.
+- **Dev stack stopped** (`make down-dev`). Data is in `data/dev/`: DB at Alembic `0010`, 6 SEC companies, 88,160 facts. Per company, a verified format-3 **draft** with conflicts: MSFT v4, others v3; earlier versions discarded. One demonstration resolution (MSFT FY2016 equity). None locked: locking is the analyst's call, and MSFT/RY/AAPL have open material conflicts. Classifier suggestions are stored (RY → bank, others → non_financial); none confirmed.
+- **Unpushed commits on `m2-ingestion`:** mapping v1 (D49), versioned datasets (D50), integrity checks and derivations (D51), data conflicts (D52), classifier (D53), market-data boundary (D54). Pushing needs owner approval.
 - **SEC User-Agent:** in git-ignored `.env.dev`, worker container only. **Never print, log or commit it.**
 
 ## Rules for this session (owner instructions)
@@ -44,11 +44,7 @@ Then ask the owner about the open decisions below. Only the commit question matt
 3. ~~Balance and consistency checks; derivations~~ **done** (D51): `standardization/{validation,derivations}.py`, `fin.validation_results`, mapping v2 (`CF.FCF`), migration `0007`. Real findings (splits, mixed vintages, RY EPS numerator): KNOWN_LIMITATIONS §4f.
 4. ~~Data-conflict detection and handling~~ **done** (D52): `standardization/conflicts.py`, `fin.data_conflicts`, `fin.conflict_resolutions`, migration `0008`, CLI `conflict-list`, `conflict-resolve`, `dataset-rebuild`. Limitations: KNOWN_LIMITATIONS §4g.
 5. ~~Financial-business classification~~ **done** (D53): `classification.py` (pure), `classifications.py` (service), migration `0009`, CLI `classify`, `classification-confirm`. Open: bank template for interim coverage, auto-suggest after ingestion (KNOWN_LIMITATIONS §4h).
-6. **Yahoo Finance (unofficial chart endpoint) (next)** (§4.2, §4.5, D15, D16):
-   - prices, splits and dividends;
-   - manual TSX listing entry with symbol validation;
-   - adjusted-close verification.
-   **Ask approval before the first live request.**
+6. **Yahoo Finance (unofficial chart endpoint)**: offline part **done** (D54): `erp_backend/market/` (model, Yahoo adapter, adjustments, store) and migration `0010`; `yahoo_chart` still disabled. **Next, and only with owner approval (P9):** enable the provider, fetch a few symbols (e.g. AAPL across the 2014/2020 splits, RY.TO), settle the close basis with `infer_close_basis`, compare `recompute_adjusted_close`, then wire split-adjusted shares into datasets and add the TSX manual-listing CLI.
 7. **US Treasury** par yield curve (§4.2). **Ask approval first.**
 8. **Bank of Canada** Valet: GoC yields and FX (§4.2). **Ask approval first.**
 9. **Damodaran** reference datasets (ERP, CRP, betas, spreads) as `suggested` values (§4.2, §10.1). **Ask approval first.**

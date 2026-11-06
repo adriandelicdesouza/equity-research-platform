@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Identity, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -77,3 +89,60 @@ class CompanyClassification(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class _Observed:
+    """Columns shared by append-only market observations (D54)."""
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    security_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.securities.id"))
+    provider_code: Mapped[str] = mapped_column(ForeignKey("source.providers.code"))
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PriceObservation(_Observed, Base):
+    __tablename__ = "price_observations"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    open: Mapped[Decimal | None] = mapped_column(Numeric)
+    high: Mapped[Decimal | None] = mapped_column(Numeric)
+    low: Mapped[Decimal | None] = mapped_column(Numeric)
+    close: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    adj_close: Mapped[Decimal | None] = mapped_column(Numeric)
+    volume: Mapped[int | None] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    close_basis: Mapped[str] = mapped_column(String(16), nullable=False)
+    adj_close_basis: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class CorporateAction(_Observed, Base):
+    __tablename__ = "corporate_actions"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    ex_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ratio_numerator: Mapped[Decimal | None] = mapped_column(Numeric)
+    ratio_denominator: Mapped[Decimal | None] = mapped_column(Numeric)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    currency_source: Mapped[str | None] = mapped_column(String(32))
+
+
+class ProviderListing(_Observed, Base):
+    __tablename__ = "provider_listings"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    provider_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    exchange_code: Mapped[str | None] = mapped_column(String(32))
+    exchange_name: Mapped[str | None] = mapped_column(String(128))
+    exchange_timezone: Mapped[str | None] = mapped_column(String(64))
+    instrument_type: Mapped[str | None] = mapped_column(String(32))
+    first_trade_date: Mapped[date | None] = mapped_column(Date)
+    quote_price: Mapped[Decimal | None] = mapped_column(Numeric)
+    quote_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

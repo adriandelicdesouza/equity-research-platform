@@ -149,7 +149,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
   - **Mixed filing vintages** (MSFT FY2016–FY2017 equity, RY 2023 equity, AAPL FY2008–2009): now detected as `mixed_vintage` conflicts that block locking until resolved or overridden (D52, §4g).
   - **EPS numerator with preferred shares (RY):** EPS uses net income after preferred dividends, but `IS.NET_INCOME_COMMON` is "attributable to the parent", which includes preferred holders. EPS checks fail by the preferred dividends. A dedicated "available to common" line item needs mapping v3.
 
-  Split-adjusting share counts needs corporate actions, which arrive with the Yahoo provider.
+  Split-adjusting share counts needs corporate actions. The methodology and a fixture regression exist (D54), but the stored datasets are unchanged until split data is retrieved and validated.
 - **Tolerances** follow Blueprint §5.3. 0.1% of total assets is generous for small income-statement items in large balance sheets; thresholds are constants in `validation.py`, not yet configurable.
 - **Derived values** are not re-checked against reported totals. Quarterly flows (Q2/Q3/Q4) are consistent with their year-to-date inputs by construction.
 - **Not derived:** net debt, interest-bearing debt totals, total liabilities from L&E − equity, and quarterly balance-sheet items for Q4 (it equals the FY balance sheet). LTM exists only at Q1/H1/9M ends with the same concept in all three inputs.
@@ -174,6 +174,18 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Run on demand:** suggestions are created by `classify`, not automatically after ingestion. Datasets don't record the classification.
 - **No confirmations exist in dev data.** All six companies are effectively `needs_review` until an analyst confirms.
 - **Interim coverage** still uses the industrial template, so banks can show `partial`/`none` (§4c). A bank template keyed on the confirmed class is open.
+
+## 4i. Market data (M2, offline preparation)
+
+- **No live data yet:** the Yahoo adapter was built and tested only on synthetic payloads; `yahoo_chart` stays disabled. Nothing about Yahoo's field semantics is verified beyond the 2026-11-06 probe (§0.4: HTTP 200, CAD prices, exchange "TOR" for RY.TO).
+- **Decisions deferred to live validation:**
+  - whether Yahoo's `close` is raw or split-adjusted (run `infer_close_basis` across a known split);
+  - how `adjclose` is built (compare `recompute_adjusted_close`);
+  - dividend currency for cross-listed or foreign-paying securities;
+  - TSX/TSXV symbol coverage, delisted symbols, and the terms of use for automated access.
+- **Not wired into datasets or valuations yet:** no split-adjusted share counts in dataset builds and no EPS-check change. The Apple EPS mismatches stay open until real corporate actions are stored and checked.
+- **No scheduler, CLI or listing UI** for prices yet. Provider symbols must be set on the security (D15).
+- **Quotes:** the provider's latest quote is stored for reference only, never used as a valuation price.
 
 ## 5. Unresolved items
 
