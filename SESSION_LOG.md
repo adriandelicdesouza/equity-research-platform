@@ -119,3 +119,20 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
   - Minecraft co-residency test (permission pending).
   - Tailscale-IP listener, verified at prod deploy (M5). Same mechanism tested on loopback.
 - **Incident:** one foreground command was killed (exit 137) during the restart. Not OOM: the host had about 6 GB free and the API showed `OOMKilled=false`. It left `web` in "Created"; resolved by re-running `make up-dev`. Long runs now go to background jobs.
+- **End of Session 2 (handoff, ~12:50 UTC).**
+  - **Git:**
+    - `m0-foundation` @ `bdc1ac8` (M0) and `main` @ `4855614` (docs). Not merged.
+    - **No Git remote is configured**, so nothing has been pushed.
+    - This log entry and the `NEXT_SESSION.md` rewrite are uncommitted (no commit authorized during handoff).
+  - **Files in `bdc1ac8`:**
+    - New: `Makefile`, `README.md`, `.dockerignore`, `pyproject.toml`, `uv.lock`, `engine/**`, `backend/**`, `frontend/**` (incl. `package-lock.json`), `infra/**` (compose ×3, Dockerfiles, Caddyfile, postgres init, env examples, scripts), `docs/DEVELOPMENT.md`, `docs/operations/memory.md`.
+    - Modified: `.gitignore` (adds `secrets/`, `.tools/`), `DECISIONS.md` (D29–D34), `KNOWN_LIMITATIONS.md` (§4a), `TECHNICAL_BLUEPRINT.md` (data-root row only, per D29), `SESSION_LOG.md`, `NEXT_SESSION.md`.
+    - Deleted: none.
+  - **Untracked/ignored runtime state:** `.venv/`, `.tools/`, `frontend/node_modules/`, `.env.dev`, `secrets/dev/`, `data/dev/`.
+  - **Running:** `erp-dev` containers (`web`/`api`/`db`), loopback only, left running. Minecraft inactive.
+  - **Consistency check:**
+    - Status lines in the three architecture docs agree: APPROVED 2026-11-06.
+    - D29 is reflected in Blueprint §12.2.
+    - Minor gap, not edited: the Blueprint §12.2 dev port row lists 8091 (+5173) but not the dev HTTPS port `127.0.0.1:8444` or DB `127.0.0.1:5433`. Both are documented in `docs/DEVELOPMENT.md` and D30, and both are loopback-only. No architectural change.
+  - **Owner question asked and still unanswered:** permission for the Minecraft co-residency test.
+- **Owner decision (end of Session 2):** Minecraft co-residency test **deferred to M5**. Handoff files committed. The merge of `m0-foundation` into `main` is not yet confirmed.

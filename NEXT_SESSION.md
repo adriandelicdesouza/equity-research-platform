@@ -1,47 +1,56 @@
 # Next Session Handoff
 
-**Updated:** 2026-11-06, end of Session 2. History: `SESSION_LOG.md`.
+**Updated:** 2026-11-06, end of Session 2. Full history: `SESSION_LOG.md`.
 
-## State
+## Verified state at handoff
 
-- **Architecture Revision 2: APPROVED** (2026-11-06). Implementation authorized; follow the roadmap in Blueprint §14.1.
-- **Branch `m0-foundation`:** M0 implementation committed there. `main` = docs checkpoint `4855614`.
-- **Dev stack `erp-dev` may still be running** (`make ps-dev`). It uses about 0.2 GB idle and is bound to loopback only (8091, 8444, 5433).
-- **Dev admin login:** user `admin`, password in `secrets/dev/initial_admin_password` (git-ignored).
+- **Architecture:** Revision 2 **APPROVED** (2026-11-06). Implementation authorized per the Blueprint §14.1 roadmap.
+- **Git:**
+  - Branch `m0-foundation` @ `bdc1ac8`: M0 complete except the open items below.
+  - `main` @ `4855614`: docs only. **Not merged.**
+  - **No remote configured; nothing pushed.**
+  - Handoff committed on `m0-foundation` (see `git log`).
+- **Dev stack `erp-dev`:** running (`web`, `api`, `db`), loopback only on 8091 (HTTP), 8444 (HTTPS), 5433 (DB).
+- **Dev admin:** user `admin`, password in `secrets/dev/initial_admin_password`.
+- **Checks:** last `make check` all green (ruff, eslint, mypy --strict, tsc, 29 pytest, 2 vitest).
 
-## Verify at startup
+## Decisions needing the owner
+
+1. **Minecraft co-residency test: DEFERRED to M5** by the owner (2026-11-06). Do not start `minecraft.service`; ask again at M5.
+2. **Merge `m0-foundation` into `main`.** Commit of the handoff was authorized; the merge itself has not been explicitly confirmed. Ask first.
+3. **SEC User-Agent contact string.** Needed before M2; goes in `.env` only.
+4. **Off-server backup destination.** Needed before production (M5 gate), not before development.
+
+## Prerequisites at startup
 
 ```bash
-git status --short          # expect clean
-git log --oneline -3        # M0 commit on m0-foundation, then 4855614, a7b6556
-make ps-dev                 # web/api/db healthy (or `make up-dev`)
-make check                  # all green
+cd ~/equity-research-platform
+git status --short && git log --oneline -3 --all   # expect handoff commit, bdc1ac8, 4855614, a7b6556
+make ps-dev || make up-dev                         # web/api/db healthy
+make check                                         # all green
 ```
 
-## Open items needing the owner
+Use `make` targets or `.tools/bin/uv run --all-packages …`; plain `uv run` removes the workspace packages. Run long jobs in the background.
 
-1. **Minecraft co-residency test.** Permission is still pending. **Ask before starting `minecraft.service`**, or ask the owner to start it. Then:
-   - run `make measure-memory LABEL="minecraft co-residency"`;
-   - run `infra/scripts/loadgen.py` as a background job;
-   - record the results in `docs/operations/memory.md`.
-2. **Merge `m0-foundation` into `main`.** Proposed once item 1 is done or explicitly deferred.
-3. **SEC User-Agent contact string.** Needed before M2. `.env` only.
-4. **Off-server backup destination.** Needed before production (M5 gate), **not** before development.
+## Exact next task
 
-## Next steps
+**Merge M0 (with confirmation), then start M1.**
 
-1. Close M0: items 1–2 above.
-2. **Start M1** (Blueprint §14.1), in this order:
-   1. `docs/methodology/dcf.md`: conventions, stub modes A/B, lease treatments, ERP/CRP, beta, dilution, output kinds. Write it first.
-   2. Independent reference in `engine/tests/reference/`: `Fraction`/`mpmath`, backward recursion, economic-profit identity. It must not import `erp_engine` (add an import-linter contract). See Blueprint §13.1.1.
-   3. `erp_engine` modules: `core` (Decimal context, periods, series, trace, registry, validation), `outputs`, forecast, `dcf` (fcff/fcfe/discounting/stub/terminal/leases), `bridge`, `dilution`, `wacc`.
-   4. Policy-guard tests (Blueprint §13.1), and at least 3 hand-worked benchmarks.
-3. Update `SESSION_LOG.md` and this file at the M1 checkpoint.
+1. M0 is closed (Minecraft test deferred to M5). Confirm the merge of `m0-foundation` into `main`, then create branch `m1-engine`.
+2. (Former step, now at M5) Minecraft co-residency: `make measure-memory` idle and under `loadgen.py`, with Minecraft running. Pass: no OOM kill, host MemAvailable > 500 MiB, no sustained swap growth.
+3. M1, step 1: write `docs/methodology/dcf.md`. Cover:
+   - discounting conventions;
+   - stub Modes A/B and roll-forward (Blueprint §7.4);
+   - FCFF and FCFE (FCFE has no bridge, §7.3);
+   - terminal value and coherence checks (§7.6);
+   - WACC with ERP/CRP and beta (§7.5);
+   - leases (§7.7.1); dilution (§7.7.2); output kinds (§6.6).
+   Include at least 3 hand-worked benchmark examples with every intermediate number.
+4. M1, step 2: independent reference in `engine/tests/reference/` (`Fraction`/`mpmath`, backward recursion, economic-profit identity). It must not import `erp_engine`; add an import-linter contract. See Blueprint §13.1.1.
+5. M1, step 3: `erp_engine` modules (Blueprint §6.1), then the policy-guard tests (§13.1).
 
-## Notes
+## Verification criteria for M1, step 1
 
-- Run long jobs (load tests, big builds) with background execution. A long foreground command was killed once.
-- Use `.tools/bin/uv run --all-packages …`, or the `make` targets. Plain `uv run` removes the workspace packages.
-- Constraints remain in force:
-  - no changes to unrelated services, Cloudflare, Tailscale or the firewall;
-  - no `sudo`; no AI features; no portfolio features; no paid services.
+- Every convention in the methodology doc cites its Blueprint section.
+- Benchmarks are computed independently of any code.
+- No engine code exists before the reference spec.

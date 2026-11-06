@@ -41,6 +41,6 @@ Findings:
 
 ### Still to measure
 
-- **Minecraft co-residency (M0/M5):** pending the owner's permission to start `minecraft.service`.
+- **Minecraft co-residency:** deferred to M5 by the owner (2026-11-06).
 - **Worker (M2)**, and the **db with real financial datasets (M2)**.
 - **M5 acceptance workload** on the prod stack.

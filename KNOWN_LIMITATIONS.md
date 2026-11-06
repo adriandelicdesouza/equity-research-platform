@@ -95,7 +95,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Rate limiter:** in-memory, so it resets when the API restarts.
 - **Memory under load:** concurrent logins are the API's largest memory consumer, because each Argon2 verification takes 19 MiB. See `docs/operations/memory.md`.
 - **Upstream warning:** a Starlette deprecation warning (`httpx` test client) appears in backend tests. It's harmless and will be revisited when FastAPI's test-client guidance settles.
-- **Minecraft co-residency:** not yet measured; permission still pending.
+- **Minecraft co-residency:** not yet measured; deferred to M5 by the owner (2026-11-06).
 
 ## 5. Unresolved items
 
