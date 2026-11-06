@@ -4,49 +4,59 @@
 
 ## Verified state
 
-- **Architecture:** Revision 2 APPROVED.
-  - D27 amended and D35 added on 2026-11-06.
-  - `docs/methodology/dcf.md` is **APPROVED** and authoritative for R1 DCF.
+- **Architecture:** Revision 2 APPROVED (D27 amended, D35 added).
+- **Methodology:** `docs/methodology/dcf.md` APPROVED and authoritative.
 - **Git:**
-  - `main` @ `0c42321` (M0 merged).
-  - Branch `m1-engine` holds the methodology commit and is not merged.
+  - `main` @ `0c42321` (M0).
+  - `m1-engine` holds the methodology commit and the **reference-valuation commit**; not merged.
   - **No remote; nothing pushed.**
-- **Dev stack `erp-dev`:** may be running, loopback only (8091/8444/5433). `make ps-dev` to check.
-- **Engine:** no calculation code yet (`erp_engine` has only its version).
+- **Independent reference:** done. It lives in `engine/tests/reference/` and reproduces benchmarks B1, B1-VD, B2, B3 and B4.
+  - Independence is enforced by import-linter (`make lint`) and an AST test.
+- **Engine:** `erp_engine` still has no calculation code.
+- **Dev stack `erp-dev`:** running, loopback only. Backend tests need it.
 
 ## Decisions needing the owner
 
-1. **Approve two dev-only dependencies** for the independent reference: `mpmath` (high-precision arithmetic) and `import-linter` (enforces that `engine/tests/reference/` never imports `erp_engine`). Both are Python packages, added through `uv` with the existing `exclude-newer` lock. No system changes.
-2. **SEC User-Agent contact string:** before M2.
-3. **Off-server backup destination:** before production (M5).
-4. **Minecraft co-residency test:** deferred to M5. Do not start `minecraft.service`.
+1. **SEC User-Agent contact string:** before M2.
+2. **Off-server backup destination:** before production (M5).
+3. **Minecraft co-residency test:** deferred to M5. Do not start `minecraft.service`.
 
-## Exact next task (after decision 1)
+Nothing blocks the next task.
 
-**Build the independent reference valuation:** `engine/tests/reference/`, Blueprint §13.1.1.
+## Exact next task
 
-1. Add `mpmath` and `import-linter` to the root `[dependency-groups] dev`. Then run `uv lock` and `make setup`.
-2. Add an import-linter contract forbidding `engine/tests/reference` from importing `erp_engine`, and run it in `make lint`.
-3. Implement the reference from `docs/methodology/dcf.md` **only**, using a different formulation:
-   - backward recursion for discounting;
-   - the economic-profit identity check;
-   - `Fraction` for integer exponents and `mpmath` (50 digits) for fractional ones.
-   - Inputs come from plain JSON fixtures.
-4. Add benchmark fixtures B1, B1-VD, B2, B3, B4 (§14), and assert the reference reproduces them:
-   - within 1e-9 relative on final values;
-   - exactly where a rational value exists.
-5. Commit on `m1-engine`.
+**M1, step 3: `erp_engine` core and the FCFF/FCFE DCF**, implemented from the methodology document (Blueprint §6.1–6.6). The engine must not read the reference code.
 
-**Verification:** `make check` green. The import-linter contract fails if a deliberate `import erp_engine` is added to a reference file (try it, then revert). All benchmarks pass.
+1. `erp_engine/core/`:
+   - `numbers` (Decimal context: precision 34, `ROUND_HALF_EVEN`);
+   - `units` (currency, scale);
+   - `periods`/timeline (Actual/365.25, stub);
+   - `series`;
+   - `trace` (`TraceNode`);
+   - `validation` (Check, Severity);
+   - `registry` (graphlib DAG, cycle detection);
+   - `errors`;
+   - `version`.
+2. `outputs.py`: `OutputKind` and `ValuationOutput` (§6.6, D18).
+3. `forecast/`, `dcf/` (fcff, fcfe, discounting with a cumulative DF, stub A/B, terminal with D27/D35, leases), `bridge/` (EV only), `dilution/` (TSM fixed point), `wacc/` (ERP/CRP, beta, Kd, weights).
+4. Tests:
+   - engine vs reference within 1e-12 relative (exact-arithmetic cases) and 1e-10 (transcendental), on the benchmark fixtures and on Hypothesis inputs;
+   - the policy-guard tests from Blueprint §13.1;
+   - determinism (identical output hash).
+5. Commit on `m1-engine` at meaningful checkpoints (core → DCF → WACC → guards).
 
-**After that:** `erp_engine` core modules (Blueprint §6.1, methodology doc), then the policy-guard tests (Blueprint §13.1).
+**Verification:**
+- `make check` green.
+- Engine matches every benchmark.
+- Each policy guard has a failing-input test.
+- `mypy --strict` clean on `erp_engine`.
 
 ## Prerequisites at startup
 
 ```bash
-git switch m1-engine && git status --short && git log --oneline -3
-make ps-dev || make up-dev     # backend tests need the dev DB
+git switch m1-engine && git status --short && git log --oneline -4
+make ps-dev || make up-dev
 make check
 ```
 
-Use `make` targets or `.tools/bin/uv run --all-packages …`. Run long jobs in the background.
+Use `make` targets or `.tools/bin/uv run --all-packages …`. Run long jobs in the background. No new dependencies are expected for step 3; ask first if any are needed.

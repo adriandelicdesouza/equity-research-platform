@@ -15,6 +15,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "httpx>=0.27",
+    "mpmath>=1.3",
+    "import-linter>=2.0",
 ]
 
 [tool.ruff]
@@ -24,6 +26,8 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "RUF"]
 ignore = ["S101"]  # assert is fine in tests
+# Financial formulas in docstrings/comments use proper mathematical symbols.
+allowed-confusables = ["−", "×", "–"]
 
 [tool.ruff.lint.per-file-ignores]
 "backend/alembic/versions/*" = ["S608"]
@@ -39,3 +43,21 @@ mypy_path = ["engine/src", "backend/src"]
 module = ["tests.*", "conftest"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+
+# Independence of the reference valuation (Blueprint §13.1.1, D26). Run via `make lint`
+# with engine/tests on PYTHONPATH so that `reference` is importable.
+[tool.importlinter]
+root_packages = ["reference", "erp_engine"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Reference valuation is independent of the engine, backend and decimal arithmetic"
+type = "forbidden"
+source_modules = ["reference"]
+forbidden_modules = ["erp_engine", "erp_backend", "decimal"]
+
+[[tool.importlinter.contracts]]
+name = "Engine never depends on test code"
+type = "forbidden"
+source_modules = ["erp_engine"]
+forbidden_modules = ["reference"]

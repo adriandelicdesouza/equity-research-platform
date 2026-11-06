@@ -163,3 +163,32 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
   - `TECHNICAL_BLUEPRINT.md`: two lines annotated (§7.4 TV timing, §7.6 default form) with pointers to D27/D35.
 - **Commit** on `m1-engine` (see `git log`). Not merged; not pushed (no remote).
 - **Next:** independent reference implementation. Needs owner approval to add dev dependencies `mpmath` and `import-linter`.
+- **Session 3, continued: independent reference valuation (owner-approved).**
+  - **Dev dependencies:** `mpmath` 1.4.1 and `import-linter` 2.15, added via uv under the existing `exclude-newer` lock (`pyproject.toml`, `uv.lock`). Dev-only; no system changes.
+  - **`engine/tests/reference/`** (package `reference`):
+    - `arithmetic` (Fraction / mpmath-50);
+    - `timeline` (§5.1 times; D27-amended TV timing);
+    - `discounting` (**backward recursion** over dated cash events, with per-period rate compounding);
+    - `forecast` (§2–§4, stub Modes A/B);
+    - `terminal` (simple and value-driver Gordon);
+    - `economic_profit` (**EP identity**: telescoping form for any TV, plus the McKinsey value-driver continuing value);
+    - `tsm` (brute-force subset search);
+    - `valuation` (FCFF with bridge and roll-forward; FCFE without bridge).
+  - **Fixtures:** `engine/tests/fixtures/benchmarks/{B1,B1-VD,B2,B3,B4}.json`. Expected values come from the methodology calculator (forward discount-factor sums), not from the reference. Each fixture also carries the document's rounded values.
+  - **Tests (26 engine tests):**
+    - Benchmarks: exact equality for B1, B1-VD, B3, B4; relative 1e-10 for B2.
+    - Document/fixture rounding consistency.
+    - EP identity for several IC₀ values, plus a Hypothesis test over random forecasts.
+    - Closed-form property tests: perpetuity, growing perpetuity, mid-period = end × (1+r)^½, cumulative per-period rates.
+    - TSM self-consistency.
+    - FCFE no-bridge guard.
+    - AST independence scan.
+  - **Sensitivity checks:**
+    - Mutations were caught: B2 price off by 1e-6 relative; B1 EV off by 1e-12; superseded D27 TV timing.
+    - A deliberate `import erp_engine` in the reference broke the import-linter contract and failed the AST test. Reverted.
+  - **Config:**
+    - `pyproject.toml`: `[tool.importlinter]` with 2 contracts; ruff `allowed-confusables` for −, ×, – in formula docstrings.
+    - `Makefile`: `lint` runs `lint-imports`.
+    - `docs/DEVELOPMENT.md`: reference section added.
+  - **Result:** `make check` green (lint + 2 contracts kept, mypy strict, 26 engine + 28 backend pytest, 2 vitest).
+  - Committed on `m1-engine`. Not merged; not pushed (no remote). The dev stack was already running and was not restarted.

@@ -52,6 +52,7 @@ create-admin-dev:  ## creates 'admin' with secrets/dev/initial_admin_password
 lint:
 	$(UV) run --all-packages ruff check engine backend
 	$(UV) run --all-packages ruff format --check engine backend
+	PYTHONPATH=engine/tests $(UV) run --all-packages lint-imports
 	cd frontend && npm run lint
 
 typecheck:
