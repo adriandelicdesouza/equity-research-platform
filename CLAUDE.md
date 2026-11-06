@@ -53,3 +53,18 @@ Do not use sudo without explicit approval.
 6. Maintain reproducible builds.
 7. Keep the application deployable.
 8. Document completed functionality and known limitations.
+
+## Token Efficiency and Session Continuity
+
+- Minimize unnecessary context loading and repeated file reading.
+- Treat NEXT_SESSION.md as the authoritative entry point for resuming work.
+- Read only the files required for the current task.
+- Never reread the entire technical blueprint unless necessary.
+- Maintain concise, incremental session documentation.
+- Keep SESSION_LOG.md chronological and avoid duplicating existing information.
+- Keep NEXT_SESSION.md actionable and ideally under 600 words.
+- Update handoff documentation at major milestones and before ending a session.
+- At startup, verify the handoff against Git status and actual project state.
+- Do not repeat completed work or regenerate existing documentation unnecessarily.
+- Preserve all existing architectural decisions and distinguish proposed decisions from approved decisions.
+- Prefer one focused task, one validation cycle, and concise reporting over repeated broad audits.
