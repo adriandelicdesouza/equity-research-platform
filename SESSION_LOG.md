@@ -192,3 +192,36 @@ cb326c3c76f2c69b536c9aaa48ffc2977189c4a1afc8c5fbed366d3c2d072f9a  KNOWN_LIMITATI
     - `docs/DEVELOPMENT.md`: reference section added.
   - **Result:** `make check` green (lint + 2 contracts kept, mypy strict, 26 engine + 28 backend pytest, 2 vitest).
   - Committed on `m1-engine`. Not merged; not pushed (no remote). The dev stack was already running and was not restarted.
+- **Session 3, continued: M1 engine implemented (owner-approved).** No new dependencies; the engine stays dependency-free (D36).
+  - **`erp_engine/core/`:**
+    - `numbers`: Decimal precision 34, `ROUND_HALF_EVEN`, traps, `@calc` context isolation, `dpow`.
+    - `errors`, `validation` (Severity, `blocks_save`), `trace` (TraceNode DAG).
+    - `registry`: graphlib order; cycle, missing-dependency, duplicate-provider and contract checks.
+    - `timeline`: Actual/365.25; cumulative per-period discount factors.
+  - **Valuation modules:**
+    - `inputs` (frozen dataclasses) and `outputs` (OutputKind, ValuationOutput, `require_kind`).
+    - `forecast`, with lease treatments for IFRS 16/ASC 842 and SBC checks.
+    - `dcf/flows`: FCFF, FCFE, stub Modes A/B.
+    - `dcf/terminal`: value driver (default), simple, exit multiple; D27-amended timing and override; implied counterparts; coherence checks.
+    - `dcf/discounting`.
+    - `bridge`: EV only; lease deductions; instrument double-count guard.
+    - `rollforward`.
+    - `dilution`: register, TSM fixed point, convertibles claim/if-converted/auto, RSUs, guards.
+    - `classification` gate.
+    - `wacc`: Ke with ERP/CRP guards; regression beta with SE/R²/CI; Blume; unlever/relever; synthetic spread; WACC weights incl. leases.
+    - `api.run_valuation`: registry pipeline, input/output hashes, versions.
+  - **Tests (109 engine tests, 98% line coverage of `erp_engine`):**
+    - Benchmarks B1, B1-VD, B3, B4 within 1e-12 relative; B2 within 1e-10.
+    - Hypothesis engine-vs-reference: FCFF (both conventions, both Gordon forms), stub Mode B mid-period, FCFE.
+    - Core units.
+    - 30+ policy-guard tests (each with a failing input).
+    - Unit tests: leases, bridge, TSM, convertibles, roll-forward, per-period rates.
+    - WACC tests.
+    - Golden master: output change without a version bump fails, verified by deliberate perturbation, then reverted.
+  - **Fixed during the work:**
+    - Four test-side failures: expectations were computed at 28 digits against the engine's 34. They're now computed in the engine context; no tolerances loosened.
+    - One scripted-edit syntax slip in `dilution.py`.
+  - **Decisions D36–D39 added.** D39: FCFE with a stub is refused rather than approximated.
+  - **`KNOWN_LIMITATIONS.md` §4b added.**
+  - **`make check` green:** lint, 2 import contracts kept, mypy strict on 46 files, 109 engine, 28 backend, 2 frontend tests.
+  - Committed on `m1-engine`. Not merged; not pushed (no remote).

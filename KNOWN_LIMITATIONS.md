@@ -89,13 +89,23 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 
 ## 4a. Implementation state (M0, Session 2)
 
-- **No financial functionality yet:** `erp_engine` only carries its version. Calculation modules start in M1.
+- **No financial functionality yet (as of M0):** superseded by §4b.
 - **No worker or job queue:** added in M2 (D32).
 - **Image tags not pinned:** base images use tags, not digests. Digest pinning is scheduled for M5.
 - **Rate limiter:** in-memory, so it resets when the API restarts.
 - **Memory under load:** concurrent logins are the API's largest memory consumer, because each Argon2 verification takes 19 MiB. See `docs/operations/memory.md`.
 - **Upstream warning:** a Starlette deprecation warning (`httpx` test client) appears in backend tests. It's harmless and will be revisited when FastAPI's test-client guidance settles.
 - **Minecraft co-residency:** not yet measured; deferred to M5 by the owner (2026-11-06).
+
+## 4b. Engine state (M1, Session 3)
+
+- **Implemented:** the FCFF/FCFE DCF engine, WACC, the bridge and dilution. It's validated against the independent reference and benchmarks B1–B4.
+- **Not wired to the API or UI yet:** that comes in M3. The engine is callable from Python only.
+- **FCFE with an interim balance sheet:** refused (D39). FCFF supports stubs fully.
+- **Exit-multiple terminal value:** FCFF only. FCFE would need terminal net debt.
+- **Stub Mode B with lease adjustments:** YTD actuals must already be on the run's lease basis. The engine notes this; it can't verify it.
+- **Regression-beta CI:** uses an analytic t-quantile approximation (D38).
+- **Sensitivity grids and scenarios:** M4.
 
 ## 5. Unresolved items
 

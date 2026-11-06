@@ -233,6 +233,29 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Why:** keeps terminal reinvestment consistent with growth (Blueprint §7.6). The simple form carries forward the final year's reinvestment rate, which is usually inconsistent with `g`.
 - **Detail:** `docs/methodology/dcf.md` §6.1, benchmark B1-VD.
 
+## Implementation decisions during M1 (Session 3)
+
+### D36. Engine inputs are frozen dataclasses; the engine has no third-party dependencies
+- **Choice:** `erp_engine.inputs` uses frozen dataclasses with `Decimal` fields, not Pydantic.
+- **Why:** keeps the authoritative calculation package dependency-free and independent of the API layer.
+- **Validation split:** the backend (Pydantic) validates requests and maps them to these types.
+
+### D37. WACC is a separate engine API; DCF consumes explicit discount rates
+- **Choice:** `erp_engine.wacc` computes Ke and WACC with every §7 rule. `run_valuation` takes the resulting per-period rates (`discount_rates`, `cost_of_equity`).
+- **Why:** the WACC build-up and the valuation are inspected separately, and scenarios override either.
+- **Integration:** wiring the two together in one request is backend work (M3).
+
+### D38. Student-t quantile without SciPy
+- **Choice:** the 95% CI of regression beta uses the Cornish–Fisher expansion of the t quantile.
+- **Accuracy:** error below 2×10⁻⁵ for 46 or more degrees of freedom. The minimum sample sizes guarantee that range.
+- **Why:** avoids adding SciPy (about 40 MB) for one constant.
+
+### D39. FCFE with an interim balance sheet (stub) deferred
+- **What's deferred:** methodology §5.3 states the Mode B rule for FCFE. Implementing it needs fiscal-year-start debt and cash balances, which the R1 financing inputs don't carry.
+- **Current behaviour:** the engine refuses FCFE with a stub (`fcfe_stub_not_supported`) rather than approximating.
+- **FCFF:** stubs are fully supported.
+- **Plan:** revisit with the R2 debt schedule.
+
 ## Pending decisions (need your input)
 
 | # | Decision | Needed by |

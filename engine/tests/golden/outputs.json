@@ -1,0 +1,36 @@
+{
+  "cases": {
+    "B1": {
+      "input_hash": "15c293a66282c454a0b5b6753a73b741a41cfa497fd146661515a108661faa92",
+      "output_hash": "fee5749dea741bc38a92b37b55befdeaef6590e9e371e3be7b6c33db30f564e9",
+      "per_share": "16.08818181818181818181818181818182"
+    },
+    "B1-VD": {
+      "input_hash": "b3d0ee332c71e302798321f6cf3dd5fa513045e8eb3b5c4de65ed6ad37b8c7fe",
+      "output_hash": "7885930e4db353bf67800e012396da18ec4d1f580111f0a087fcd88a673835c7",
+      "per_share": "15.56469421487603305785123966942148"
+    },
+    "B2": {
+      "input_hash": "64c50fbc59b6c214a837032f2c1d80cb0f5a7a1432bf3c41eaf6ec9e748eba0e",
+      "output_hash": "f7c5106c1e0f93a97f9fb5ba534ee3e8c718e4e7385b74ce33689241c6c34e0c",
+      "per_share": "17.17145754496314912182625993783449"
+    },
+    "B3": {
+      "input_hash": "95ee3385aa213d37f8074e782e0ed23fd9ddc4cab7ab5b2c6a0b6fd2b6fca56f",
+      "output_hash": "d7ded08d54b1bebf921a8a90254b7d944c76242f5da3e93fd176fc0f1e8c33b0",
+      "per_share": "14.6833466198979591836734693877551"
+    }
+  },
+  "engine_version": "0.1.0",
+  "module_versions": {
+    "bridge": "1.0.0",
+    "classification": "1.0.0",
+    "dilution": "1.0.0",
+    "discounting": "1.0.0",
+    "flows": "1.0.0",
+    "forecast": "1.0.0",
+    "rollforward": "1.0.0",
+    "terminal": "1.0.0",
+    "wacc": "1.0.0"
+  }
+}
