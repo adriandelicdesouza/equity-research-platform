@@ -32,6 +32,21 @@ describe("App", () => {
     expect(screen.getByText(/Test reviewer · reviewer/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Companies" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("routes the listings and reference-data sections from the URL", async () => {
+    mockFetch({
+      "GET /api/auth/me": makeMe("reviewer"),
+      "GET /api/listings": page([]),
+      "GET /api/reference/datasets": page([]),
+    });
+    setHash("#/listings");
+    renderApp();
+    expect(await screen.findByText("No listing matches.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Listings" })).toHaveAttribute("aria-current", "page");
+    setHash("#/reference");
+    expect(await screen.findByText(/No reference dataset has been imported/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reference data" })).toHaveAttribute("aria-current", "page");
+  });
 });
 
 describe("Session permissions", () => {
