@@ -43,11 +43,25 @@ from erp_backend.datasets import (
 )
 from erp_backend.errors import ApiError
 from erp_backend.ingestion.selection import Policy
-from erp_backend.models import ApiAction, Company, FinancialDataset
+from erp_backend.market.listings import set_trading_currency
+from erp_backend.market.registration import (
+    IssuerRef,
+    ListingProposal,
+    NewIssuer,
+    check_listing,
+    register_listing,
+)
+from erp_backend.models import ApiAction, Company, FinancialDataset, Security
 from erp_backend.read import companies as read_companies
 from erp_backend.read import datasets as read_datasets
 from erp_backend.read.common import MAX_LIMIT, paginate
-from erp_backend.read.schemas import ClassificationOut, DatasetOut, Page, ResolutionOut
+from erp_backend.read.schemas import (
+    ClassificationOut,
+    DatasetOut,
+    ListingOut,
+    Page,
+    ResolutionOut,
+)
 from erp_backend.readonly import read_only_db
 from erp_backend.workflow import ActionOut, perform
 
@@ -508,5 +522,179 @@ def confirm_classification_action(
         request=body.model_dump(mode="json"),
         idempotency_key=idempotency_key,
         target=str(company_id),
+        run=run,
+    )
+
+
+# --------------------------------------------------------------------------- listings
+
+
+class SameIssuerAs(_Body):
+    ticker: Annotated[str, Field(min_length=1, max_length=16)]
+    mic: Annotated[str, Field(pattern=r"^[A-Za-z0-9]{4}$")]
+
+
+class NewIssuerIn(_Body):
+    legal_name: Annotated[str, Field(min_length=1, max_length=300)]
+    country: Annotated[str, Field(pattern=r"^[A-Za-z]{2}$")]
+    common_name: Annotated[str | None, Field(max_length=300)] = None
+    reporting_currency: Annotated[str | None, Field(pattern=r"^[A-Za-z]{3}$")] = None
+
+
+class IssuerIn(_Body):
+    """Exactly one way of naming the issuer (the service refuses anything else, too)."""
+
+    company_id: uuid.UUID | None = None
+    same_issuer_as: SameIssuerAs | None = None
+    cik: Annotated[int | None, Field(ge=1, le=9_999_999_999)] = None
+    new: NewIssuerIn | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> IssuerIn:
+        given = [x for x in (self.company_id, self.same_issuer_as, self.cik, self.new) if x]
+        if len(given) != 1:
+            raise ValueError("give exactly one of company_id, same_issuer_as, cik or new")
+        return self
+
+
+class ListingRequest(_Body):
+    ticker: Annotated[str, Field(min_length=1, max_length=16)]
+    mic: Annotated[str, Field(pattern=r"^[A-Za-z0-9]{4}$")]
+    currency: Annotated[str, Field(pattern=r"^[A-Za-z]{3}$")]
+    security_type: Literal[
+        "common_equity", "preferred_equity", "depositary_receipt", "fund_unit", "other"
+    ]
+    issuer: IssuerIn
+    source: Annotated[str, Field(min_length=1, max_length=500)]
+    reason: Reason
+    source_reference: Annotated[str | None, Field(max_length=1000)] = None
+    share_class: Annotated[str | None, Field(max_length=16)] = None
+    isin: Annotated[str | None, Field(pattern=r"^[A-Za-z0-9]{12}$")] = None
+    provider_symbols: dict[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")],
+        Annotated[str, Field(min_length=1, max_length=32)],
+    ] = Field(default_factory=dict)
+    confirm_new_issuer: bool = False
+
+    def proposal(self) -> ListingProposal:
+        i = self.issuer
+        return ListingProposal(
+            ticker=self.ticker,
+            mic=self.mic,
+            currency=self.currency,
+            security_type=self.security_type,
+            issuer=IssuerRef(
+                company_id=i.company_id,
+                same_issuer_as=(i.same_issuer_as.ticker, i.same_issuer_as.mic)
+                if i.same_issuer_as
+                else None,
+                cik=i.cik,
+                new=NewIssuer(
+                    legal_name=i.new.legal_name,
+                    country=i.new.country,
+                    common_name=i.new.common_name,
+                    reporting_currency=i.new.reporting_currency,
+                )
+                if i.new
+                else None,
+            ),
+            source_name=self.source,
+            reason=self.reason,
+            share_class=self.share_class,
+            isin=self.isin,
+            source_reference=self.source_reference,
+            provider_symbols=dict(self.provider_symbols),
+            confirm_new_issuer=self.confirm_new_issuer,
+        )
+
+
+class RegistrationOut(BaseModel):
+    listing: ListingOut
+    company_id: uuid.UUID
+    company_created: bool
+    registration_id: uuid.UUID
+    warnings: list[dict[str, str]]
+
+
+@router.post("/listings/validate")
+def validate_listing_action(
+    body: ListingRequest,
+    db: Annotated[Session, Depends(read_only_db)],
+    _: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+) -> JSONResponse:
+    """Check a listing proposal (issuer resolution, duplicates, currency, symbols). Runs on
+    the read-only session: nothing is written and it is not recorded as an action."""
+    check = check_listing(db, body.proposal())
+    return JSONResponse(check.as_dict())
+
+
+@router.post("/listings", response_model=ActionOut, status_code=201)
+def register_listing_action(
+    body: ListingRequest,
+    db: DbSession,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Register an exchange listing (D56): re-checked under a lock; refused on any error.
+    Audited (``listing_registered``) with an append-only registration record."""
+
+    def run() -> tuple[int, BaseModel]:
+        result = register_listing(db, body.proposal(), user_id=ctx.user.id)
+        return 201, RegistrationOut(
+            listing=read_companies.get_listing(db, result.security.id),
+            company_id=result.company.id,
+            company_created=result.company_created,
+            registration_id=result.registration_id,
+            warnings=[w.as_dict() for w in result.check.warnings],
+        )
+
+    return perform(
+        db,
+        ctx,
+        action="listing.register",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=f"{body.ticker}:{body.mic}".upper(),
+        run=run,
+    )
+
+
+class CurrencyRequest(_Body):
+    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$", description="ISO 4217, upper case")]
+    reason: Reason
+
+
+class CurrencyOut(BaseModel):
+    listing: ListingOut
+    changed: bool
+
+
+@router.post("/listings/{listing_id}/trading-currency", response_model=ActionOut)
+def declare_currency_action(
+    listing_id: uuid.UUID,
+    body: CurrencyRequest,
+    db: DbSession,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Declare a listing's trading currency once (audited). Declaring the same currency again
+    changes nothing; a different one is refused (stored prices depend on it)."""
+
+    def run() -> tuple[int, BaseModel]:
+        security = db.get(Security, listing_id, with_for_update=True)
+        if security is None:
+            raise ApiError(404, "not_found", f"No listing {listing_id}.")
+        changed = set_trading_currency(
+            db, security, body.currency, reason=body.reason, user_id=ctx.user.id
+        )
+        return 200, CurrencyOut(listing=read_companies.get_listing(db, listing_id), changed=changed)
+
+    return perform(
+        db,
+        ctx,
+        action="listing.currency",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(listing_id),
         run=run,
     )
