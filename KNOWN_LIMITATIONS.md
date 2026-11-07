@@ -243,6 +243,20 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Dev DB:** `0015` applied; series registry seeded; no observations, fetches or reference datasets stored.
 - **Not wired into valuations:** Rf, ERP, CRP, betas and spreads don't yet feed WACC inputs (§7.5).
 
+## 4n. Read-only data API (M3 phase 1, Session 7)
+
+- **Read only:** no workflow actions (imports, dataset lifecycle, conflict resolution, classification, listing registration) and no UI yet.
+- **Authentication:** cookie sessions only (browser login). No API tokens for scripts, and no per-company or row-level permissions: `company:read` grants every data endpoint.
+- **No dedicated read-only DB role:** writes are blocked by READ ONLY transactions and ORM guards, while the connection still uses the app role.
+- **Integrity endpoint** re-hashes stored rows only. The full rebuild comparison is the CLI `dataset-verify`.
+- **Pagination** is offset-based with exact totals, which is fine at the current data sizes (about 7k values per dataset). Very large tables would need keyset pagination.
+- **No request-level rate limit** on data routes, beyond the page-size cap (500), the statement timeout (10 s) and the 60-period cap on statement grids.
+- **Responses are not cached,** and there are no ETags.
+- **Values:**
+  - `adjusted` (analyst-adjusted) datasets don't exist yet, so `basis` covers `standardized` and `reported` only;
+  - valuations don't consume any of these endpoints yet.
+- **Dev only:** nothing is exposed publicly. Remote access still needs P3.
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

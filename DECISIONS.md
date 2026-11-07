@@ -631,6 +631,37 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Provider gate for file imports:** like D55/D57, a Damodaran file import runs with `damodaran` disabled. P13 now covers it too.
 - **Not wired:** nothing feeds WACC yet. When it is (§7.5), Damodaran values enter as `suggested` with table + edition provenance, and Rf is taken in the cash-flow currency from these series.
 
+### D59. Read-only data API over M2: GET-only routes, read-only sessions, query services (§2.1, §10, §11; D10, D28, D50–D58)
+- **Framework reused, nothing parallel:**
+  - the existing FastAPI app factory, structured error envelope, cookie sessions and RBAC;
+  - OpenAPI at `/api/openapi.json` stays the single contract source for the future UI (D28).
+
+  New routes are under `/api` (unversioned, like the existing auth, admin and health routes).
+- **Layers:**
+  - `api/data.py`: thin GET handlers, typed and validated parameters (`Literal` enums, patterns, ranges);
+  - `read/*.py`: SELECT-only services returning Pydantic schemas, with batch loading of related rows;
+  - `readonly.py`: read sessions.
+
+  Business data comes from stored rows and existing domain functions (`stored_canonical`, `stored_checks`, `effective_classification`); conflict and version rules are not re-implemented.
+- **Read-only boundary**, at three layers:
+  1. only GET routes;
+  2. a per-request session in a PostgreSQL `READ ONLY` transaction with a 10 s statement timeout, always rolled back;
+  3. ORM guards that refuse flushes and DML on that session.
+
+  Authentication keeps its own normal session for `last_seen_at`. No new DB role was created: the server-side read-only transaction already prevents writes, and a dedicated role would need deployment and secrets work (P2–P5 scope).
+- **Authorization:** every data route requires `company:read`, which admin, analyst and reviewer all hold. No public access, no API tokens.
+- **Response rules:**
+  - exact decimals as JSON strings; units and currencies always present;
+  - paginated envelopes (`limit` ≤ 500);
+  - one dataset version per values or statement request, with basis, version and status stated;
+  - price series need one provider and one close basis, otherwise `409 ambiguous_series`;
+  - `revisions=latest|all` with per-date revision counts;
+  - FX only in the stored direction;
+  - archive paths never returned;
+  - unexpected errors return a generic `500` with no SQL, paths or tracebacks.
+- **Integrity endpoint:** re-hashes the stored values and checks. The rebuild-from-sources comparison stays in the CLI `dataset-verify` (too heavy for a request).
+- **Schema:** no migration. A read-only ORM mapping for the existing `ref.standard_line_items` provides labels and statement order.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

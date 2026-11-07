@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+_log = structlog.get_logger("erp.api")
 
 
 class ApiError(Exception):
@@ -36,3 +39,15 @@ def install_error_handlers(app: FastAPI) -> None:
             _body("validation_error", "Request validation failed.", details=details),
             status_code=422,
         )
+
+    @app.exception_handler(Exception)
+    async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
+        # Never return SQL, paths or tracebacks to the client; log the type and route only
+        # (no query parameters or bodies, which may carry sensitive data).
+        from erp_backend.readonly import ReadOnlyViolationError
+
+        if isinstance(exc, ReadOnlyViolationError):
+            _log.error("read_only_violation", path=request.url.path)
+            return JSONResponse(_body("read_only", "This endpoint is read-only."), status_code=405)
+        _log.error("unhandled_error", path=request.url.path, error_type=type(exc).__name__)
+        return JSONResponse(_body("internal_error", "An internal error occurred."), status_code=500)

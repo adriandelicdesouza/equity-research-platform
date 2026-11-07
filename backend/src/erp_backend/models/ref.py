@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -70,3 +71,22 @@ class ReferenceValue(Base):
     unit: Mapped[str] = mapped_column(String(16), nullable=False)
     import_row: Mapped[int] = mapped_column(Integer, nullable=False)
     locator: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class StandardLineItem(Base):
+    """A standard line item of one mapping version (migration 0005; read-only here)."""
+
+    __tablename__ = "standard_line_items"
+    __table_args__ = {"schema": "ref"}  # noqa: RUF012
+
+    mapping_version: Mapped[str] = mapped_column(String(16), primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    statement: Mapped[str] = mapped_column(String(2), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_code: Mapped[str | None] = mapped_column(String(64))
+    period_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    value_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    sign_convention: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_subtotal: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    derived_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)

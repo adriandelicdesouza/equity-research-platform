@@ -581,3 +581,31 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - No fetches, observations, imports or reference datasets were written. The SEC data is unchanged (88,160 facts).
 - **Tests:** 110 new (backend 499 → 609), all synthetic: parser tests without a DB; store, gate, constraint and CLI tests on `erp_test`; migration up/down plus refusal of a downgrade once data exists. The fetch path uses `httpx.MockTransport`; no network requests were made.
 - **Test-harness note:** an owner-role `TRUNCATE` while the test session held uncommitted rows deadlocked once. The owner append-only tests now insert their own rows in their own transaction.
+
+### Session 7 — M3 phase 1: read-only data API (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `4742cba`, clean, 13 ahead of `origin/m2-ingestion` (`51cd1fa`), nothing pushed. After `make up-dev`: Alembic `0015`, all 7 providers disabled. Baseline `make check` backend 609, engine 109, frontend 2; no discrepancy.
+- **Design recorded as D59.** Existing FastAPI app, error envelope, cookie sessions and RBAC reused; no new framework or service layer.
+- **Built:**
+  - `readonly.py`: per-request `READ ONLY` transaction, 10 s statement timeout, ORM guards against flushes and DML, always rolled back;
+  - `read/`: query services and schemas for companies/listings/classifications, datasets/values/statement grids/checks/integrity, conflicts/resolutions, imports, prices/corporate actions, rate series/observations, FX and reference datasets/records;
+  - `api/data.py`: 24 GET routes, all requiring `company:read`;
+  - generic `500` and `read_only` error handlers in `errors.py`;
+  - read-only ORM mapping `StandardLineItem` for the existing `ref.standard_line_items`.
+- **No migration**, and no change to M2 ingestion, calculations or the CLI.
+- **Tests:** 35 new (backend 609 → 644), in `test_data_api.py`.
+  - Setup: a dedicated disposable `erp_test_api` database, seeded with synthetic data through the real services.
+  - Coverage:
+    - 401/403/404/405/409/422/500 responses;
+    - the read-only boundary at the routing, ORM and database layers;
+    - row counts unchanged after API calls;
+    - query counts independent of page size.
+- **Dev smoke test** in the API container, through the production read-only path on real dev data:
+  - 6 companies;
+  - the AAPL draft (7,077 values) FY income-statement grid in 0.07 s and a 500-value page in 0.10 s;
+  - integrity verified;
+  - 6 open material conflicts;
+  - 19 rate series;
+  - unauthenticated requests → 401; POST → 405.
+
+  Dev DB row counts were identical before and after. No external requests were made.

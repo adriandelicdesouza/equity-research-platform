@@ -24,7 +24,7 @@ from erp_backend.models.market import (
     RateSeries,
     Security,
 )
-from erp_backend.models.ref import ReferenceDataset, ReferenceValue
+from erp_backend.models.ref import ReferenceDataset, ReferenceValue, StandardLineItem
 from erp_backend.models.source import (
     Filing,
     Provider,
@@ -63,6 +63,7 @@ __all__ = [
     "SecTicker",
     "Security",
     "SourceImport",
+    "StandardLineItem",
     "StatementImportValue",
     "User",
     "UserRole",
