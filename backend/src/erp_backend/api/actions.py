@@ -19,16 +19,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Path, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from erp_backend.auth.deps import AppSettings, AuthContext, DbSession, authenticated, require
 from erp_backend.auth.rbac import Permission
+from erp_backend.classifications import confirm_classification, effective_classification
 from erp_backend.datasets import (
     IMPORT_BASIS,
     build_dataset,
@@ -36,14 +38,16 @@ from erp_backend.datasets import (
     discard_dataset,
     lock_dataset,
     rebuild_draft,
+    resolve_conflict,
     verify_dataset,
 )
 from erp_backend.errors import ApiError
 from erp_backend.ingestion.selection import Policy
 from erp_backend.models import ApiAction, Company, FinancialDataset
+from erp_backend.read import companies as read_companies
 from erp_backend.read import datasets as read_datasets
 from erp_backend.read.common import MAX_LIMIT, paginate
-from erp_backend.read.schemas import DatasetOut, Page
+from erp_backend.read.schemas import ClassificationOut, DatasetOut, Page, ResolutionOut
 from erp_backend.readonly import read_only_db
 from erp_backend.workflow import ActionOut, perform
 
@@ -357,5 +361,152 @@ def discard_dataset_action(
         request=body.model_dump(mode="json"),
         idempotency_key=idempotency_key,
         target=str(dataset_id),
+        run=run,
+    )
+
+
+# --------------------------------------------------------------------------- conflicts
+
+
+class ResolutionRequest(_Body):
+    action: Literal["select_candidate", "enter_value", "override", "revoke"]
+    reason: Reason
+    candidate_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="select_candidate: the candidate's id (fact or import value)",
+    )
+    candidate_source: Literal["reported_fact", "import_value"] | None = Field(
+        default=None, description="select_candidate: which id space (required if ambiguous)"
+    )
+    value: Decimal | None = Field(default=None, description="enter_value: exact amount")
+    source_reference: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def _fields_match_action(self) -> ResolutionRequest:
+        selecting = self.action == "select_candidate"
+        entering = self.action == "enter_value"
+        if selecting != (self.candidate_id is not None):
+            raise ValueError("candidate_id is required for, and only for, select_candidate")
+        if self.candidate_source is not None and not selecting:
+            raise ValueError("candidate_source applies to select_candidate only")
+        if entering != (self.value is not None) or entering != (self.source_reference is not None):
+            raise ValueError(
+                "value and source_reference are required for, and only for, enter_value"
+            )
+        if self.value is not None and not self.value.is_finite():
+            raise ValueError("value must be a finite number")
+        return self
+
+
+class ResolutionActionOut(BaseModel):
+    resolution: ResolutionOut
+    note: str
+
+
+@router.post(
+    "/datasets/{dataset_id}/conflicts/{conflict_key}/resolutions",
+    response_model=ActionOut,
+    status_code=201,
+)
+def resolve_conflict_action(
+    dataset_id: uuid.UUID,
+    conflict_key: Annotated[str, Path(pattern=r"^[0-9a-f]{8,32}$")],
+    body: ResolutionRequest,
+    db: DbSession,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Append an analyst decision on a conflict (select a candidate, enter a value with a
+    source, override with a reason, or revoke the active decision). It never edits a dataset
+    or an earlier decision; it takes effect in the next build (``.../datasets/rebuild``)."""
+
+    def run() -> tuple[int, BaseModel]:
+        _dataset_row(db, dataset_id)
+        resolution = resolve_conflict(
+            db,
+            dataset_id,
+            conflict_key,
+            body.action,
+            reason=body.reason,
+            candidate_fact_id=body.candidate_id,
+            value=body.value,
+            source_reference=body.source_reference,
+            candidate_source=body.candidate_source,
+            user_id=ctx.user.id,
+        )
+        return 201, ResolutionActionOut(
+            resolution=read_datasets._resolution(resolution),
+            note="Recorded; applied by the next rebuild of the company's draft dataset.",
+        )
+
+    return perform(
+        db,
+        ctx,
+        action="conflict.resolve",
+        request={
+            "dataset_id": str(dataset_id),
+            "conflict_key": conflict_key,
+            **body.model_dump(mode="json"),
+        },
+        idempotency_key=idempotency_key,
+        target=conflict_key,
+        run=run,
+    )
+
+
+# --------------------------------------------------------------------------- classification
+
+
+class ConfirmClassificationRequest(_Body):
+    classification: Literal[
+        "bank",
+        "insurer",
+        "specialty_lender",
+        "reit",
+        "asset_manager_broker",
+        "investment_holding",
+        "non_financial",
+    ]
+    reason: Reason
+
+
+class ClassificationActionOut(BaseModel):
+    company_id: uuid.UUID
+    effective: str
+    confirmation: ClassificationOut
+
+
+@router.post(
+    "/companies/{company_id}/classification/confirm", response_model=ActionOut, status_code=201
+)
+def confirm_classification_action(
+    company_id: uuid.UUID,
+    body: ConfirmClassificationRequest,
+    db: DbSession,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Analyst confirmation of the financial-business classification (D53). It may differ
+    from the suggestion; the reason says why. History is append-only."""
+
+    def run() -> tuple[int, BaseModel]:
+        company = _company(db, company_id)
+        row = confirm_classification(
+            db, company, body.classification, reason=body.reason, user_id=ctx.user.id
+        )
+        out = read_companies._classification(row)
+        assert out is not None
+        return 201, ClassificationActionOut(
+            company_id=company.id, effective=effective_classification(company), confirmation=out
+        )
+
+    return perform(
+        db,
+        ctx,
+        action="classification.confirm",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(company_id),
         run=run,
     )
