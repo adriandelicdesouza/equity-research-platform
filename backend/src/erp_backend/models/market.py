@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Integer,
     Numeric,
     String,
     Text,
@@ -97,13 +98,20 @@ class _Observed:
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     security_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.securities.id"))
     provider_code: Mapped[str] = mapped_column(ForeignKey("source.providers.code"))
-    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
-class PriceObservation(_Observed, Base):
+class _FetchOrImport:
+    """Exactly one origin (CHECK, migration 0011): a provider fetch, or a file import + row."""
+
+    fetch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("source.provider_fetches.id"))
+    import_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("source.imports.id"))
+    import_row: Mapped[int | None] = mapped_column(Integer)
+
+
+class PriceObservation(_Observed, _FetchOrImport, Base):
     __tablename__ = "price_observations"
     __table_args__ = {"schema": "market"}  # noqa: RUF012
 
@@ -119,7 +127,7 @@ class PriceObservation(_Observed, Base):
     adj_close_basis: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
-class CorporateAction(_Observed, Base):
+class CorporateAction(_Observed, _FetchOrImport, Base):
     __tablename__ = "corporate_actions"
     __table_args__ = {"schema": "market"}  # noqa: RUF012
 
@@ -135,6 +143,8 @@ class CorporateAction(_Observed, Base):
 class ProviderListing(_Observed, Base):
     __tablename__ = "provider_listings"
     __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
 
     provider_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     currency: Mapped[str | None] = mapped_column(String(3))

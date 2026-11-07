@@ -460,6 +460,158 @@ def _classification_confirm(ticker: str, classification: str, reason: str) -> in
     return 0
 
 
+def _read_input(path: str, filename: str | None) -> tuple[str, bytes] | None:
+    """File bytes from a path, or from stdin with ``--file -`` (``--filename`` required)."""
+    if path == "-":
+        if not filename:
+            print("error: --filename is required with --file -", file=sys.stderr)
+            return None
+        return filename, sys.stdin.buffer.read()
+    file = Path(path)
+    if not file.is_file():
+        print(f"error: no such file {path}", file=sys.stderr)
+        return None
+    return filename or file.name, file.read_bytes()
+
+
+def _print_report(report: object, show_all: bool) -> None:
+    from erp_backend.market.file_import import Status, ValidationReport
+
+    assert isinstance(report, ValidationReport)
+    print(f"template  {report.template}")
+    print(f"file      {report.filename} ({report.bytes} bytes)")
+    print(f"sha256    {report.file_sha256}")
+    for error in report.file_errors:
+        print(f"FILE ERROR  {error}")
+    s = report.summary
+    print(
+        f"records   {s['records']}: accepted {s['accepted']}, duplicate {s['duplicate']}, "
+        f"conflict {s['conflict']}, rejected {s['rejected']}; warnings {s['warnings']}"
+    )
+    shown = 0
+    limit = None if show_all else 50
+    for r in report.records:
+        if not r.issues and r.status is Status.ACCEPTED:
+            continue
+        for i in r.issues:
+            if limit is not None and shown >= limit:
+                print("... more issues; use --all or --json")
+                return
+            day = r.on_date.isoformat() if r.on_date else "-"
+            print(
+                f"  {r.locator:>10}  {r.status.value:<9} {r.listing or '-':<12} {day}  "
+                f"{i.level}:{i.code}  {i.message}"
+            )
+            shown += 1
+
+
+def _market_import_validate(args: argparse.Namespace) -> int:
+    import json
+
+    from erp_backend.db import new_session
+    from erp_backend.market.file_import import ImportRefusedError, validate
+
+    source = _read_input(args.file, args.filename)
+    if source is None:
+        return 1
+    with new_session() as db:
+        try:
+            report = validate(db, filename=source[0], data=source[1], template=args.template)
+        except ImportRefusedError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        db.rollback()  # validation never writes; make that explicit
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+    else:
+        _print_report(report, args.all)
+        if not report.file_errors and report.summary["accepted"]:
+            print(f"to ingest: market-import ... --expect-sha256 {report.file_sha256}")
+    return 1 if report.file_errors else 0
+
+
+def _market_import(args: argparse.Namespace) -> int:
+    from erp_backend.config import get_settings
+    from erp_backend.db import new_session
+    from erp_backend.market.file_import import ImportRefusedError, ingest
+
+    source = _read_input(args.file, args.filename)
+    if source is None:
+        return 1
+    with new_session() as db:
+        try:
+            result = ingest(
+                db,
+                filename=source[0],
+                data=source[1],
+                template=args.template,
+                source_name=args.source,
+                source_reference=args.source_reference,
+                expected_sha256=args.expect_sha256,
+                raw_root=get_settings().raw_root,
+                allow_partial=args.allow_partial,
+            )
+        except ImportRefusedError as exc:
+            db.rollback()
+            print(f"refused (nothing written): {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+    if result.import_id is None:
+        print(f"nothing new to store: {result.already_present} record(s) already present")
+        return 0
+    print(
+        f"import {result.import_id} ({result.status}): inserted {result.inserted}, "
+        f"already present {result.already_present}, skipped {result.skipped}"
+    )
+    return 0
+
+
+def _market_import_list(limit: int) -> int:
+    from sqlalchemy import select
+
+    from erp_backend.db import new_session
+    from erp_backend.models import SourceImport
+
+    with new_session() as db:
+        rows = db.scalars(
+            select(SourceImport).order_by(SourceImport.imported_at.desc()).limit(limit)
+        ).all()
+        for r in rows:
+            s = r.summary
+            print(
+                f"{r.id}  {r.imported_at:%Y-%m-%d %H:%M}  {r.template_version:<22} "
+                f"{r.status:<8} accepted {s.get('accepted', 0)}, skipped {len(r.skipped)}  "
+                f"{r.original_filename}  sha256 {r.file_sha256[:12]}…  source: {r.source_name}"
+            )
+        if not rows:
+            print("no imports")
+    return 0
+
+
+def _listing_set_currency(args: argparse.Namespace) -> int:
+    from erp_backend.db import new_session
+    from erp_backend.market.listings import ListingError, find_listings, set_trading_currency
+
+    with new_session() as db:
+        found = find_listings(db, args.ticker, args.mic)
+        if len(found) != 1:
+            print(
+                f"error: {len(found)} listings match {args.ticker.upper()} {args.mic.upper()}",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            changed = set_trading_currency(db, found[0], args.currency, reason=args.reason)
+        except ListingError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+        state = "set" if changed else "unchanged"
+        listing = f"{found[0].ticker} {found[0].exchange_mic}"
+        print(f"{listing}: trading currency {found[0].trading_currency} ({state})")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -545,6 +697,37 @@ def main(argv: list[str] | None = None) -> int:
                  "investment_holding", "non_financial"],
     )  # fmt: skip
     cc.add_argument("--reason", required=True)
+    for name, text in (
+        ("market-import-validate", "Validate a market-data file and preview it (no writes)."),
+        ("market-import", "Ingest a validated market-data file (append-only)."),
+    ):
+        mi = sub.add_parser(name, help=text)
+        mi.add_argument(
+            "--template", required=True, choices=["market_prices.v1", "corporate_actions.v1"]
+        )
+        mi.add_argument("--file", required=True, help="path, or - to read stdin")
+        mi.add_argument("--filename", help="original file name (required with --file -)")
+        if name == "market-import-validate":
+            mi.add_argument("--json", action="store_true", help="full report as JSON")
+            mi.add_argument("--all", action="store_true", help="show every issue")
+        else:
+            mi.add_argument("--source", required=True, help="where the data came from")
+            mi.add_argument("--source-reference", help="URL, document or retrieval note")
+            mi.add_argument(
+                "--expect-sha256", required=True, help="SHA-256 printed by market-import-validate"
+            )
+            mi.add_argument(
+                "--allow-partial", action="store_true", help="store accepted records; skip the rest"
+            )
+    mil = sub.add_parser("market-import-list", help="List ingested market-data files.")
+    mil.add_argument("--limit", type=int, default=20)
+    lsc = sub.add_parser(
+        "listing-set-currency", help="Declare a listing's trading currency (once; audited)."
+    )
+    lsc.add_argument("--ticker", required=True)
+    lsc.add_argument("--mic", required=True, help="exchange MIC, e.g. XNAS, XNYS, XTSE")
+    lsc.add_argument("--currency", required=True, help="ISO 4217 code, e.g. USD, CAD")
+    lsc.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -573,6 +756,14 @@ def main(argv: list[str] | None = None) -> int:
         return _classify(args.ticker)
     if args.command == "classification-confirm":
         return _classification_confirm(args.ticker, args.classification, args.reason)
+    if args.command == "market-import-validate":
+        return _market_import_validate(args)
+    if args.command == "market-import":
+        return _market_import(args)
+    if args.command == "market-import-list":
+        return _market_import_list(args.limit)
+    if args.command == "listing-set-currency":
+        return _listing_set_currency(args)
     if args.command == "sec-standardize-report":
         return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover

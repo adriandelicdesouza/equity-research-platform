@@ -66,7 +66,8 @@ def _check_listing(security: Security, history: PriceHistory) -> None:
         )
 
 
-def _insert(db: Session, model: type, rows: list[dict[str, object]]) -> int:
+def insert_new(db: Session, model: type, rows: list[dict[str, object]]) -> int:
+    """Insert observations; exact repeats (unique index over observed values) are skipped."""
     if not rows:
         return 0
     # RETURNING counts exactly the rows inserted (rowcount is unreliable for batched inserts).
@@ -146,9 +147,9 @@ def store_history(
         "quote_time": m.quote_time,
         "raw": dict(m.raw),
     }
-    inserted_prices = _insert(db, PriceObservation, prices)
-    inserted_actions = _insert(db, CorporateAction, actions)
-    listing_inserted = _insert(db, ProviderListing, [listing]) == 1
+    inserted_prices = insert_new(db, PriceObservation, prices)
+    inserted_actions = insert_new(db, CorporateAction, actions)
+    listing_inserted = insert_new(db, ProviderListing, [listing]) == 1
     result = StoreResult(
         fetch_id=fetch.id,
         prices_inserted=inserted_prices,
@@ -214,15 +215,22 @@ def ingest_archived(
 
 
 def current_prices(
-    db: Session, security_id: uuid.UUID, provider_code: str
+    db: Session, security_id: uuid.UUID, provider_code: str, close_basis: str | None = None
 ) -> list[PriceObservation]:
-    """Latest observation per trade date (by fetch order of first delivery)."""
+    """Latest observation per trade date (by order of first delivery).
+
+    Pass ``close_basis`` to read one series: a source may hold both a raw and a
+    split-adjusted series for the same listing (e.g. two imported files), and the two must
+    never be mixed in one series."""
+    conditions = [
+        PriceObservation.security_id == security_id,
+        PriceObservation.provider_code == provider_code,
+    ]
+    if close_basis is not None:
+        conditions.append(PriceObservation.close_basis == close_basis)
     latest = (
         select(PriceObservation.trade_date, func.max(PriceObservation.id).label("id"))
-        .where(
-            PriceObservation.security_id == security_id,
-            PriceObservation.provider_code == provider_code,
-        )
+        .where(*conditions)
         .group_by(PriceObservation.trade_date)
         .subquery()
     )

@@ -469,6 +469,52 @@ These refine the approved architecture. None changes an approved methodology dec
   - Dividends feed FCFE/DDM history and adjusted-return series for beta.
   - None of this changes reported facts or existing locked datasets.
 
+### D55. Market-data CSV import: validate, preview, explicit ingestion (§4.2, §4.6, §3.3, §10.1; D16, D54)
+- **Scope, reconciled with the Blueprint:**
+  - §4.6 describes a **statement** template (line-item codes × fiscal periods, plus a metadata sheet) that creates a `reported` dataset.
+  - §4.2 lists `csv_import` / `excel_import` for "statements and prices".
+  - D16 makes manual CSV **price** import the fallback for Yahoo.
+
+  This milestone implements the price and corporate-action part only. Statement import stays a separate workflow, writing to `fin.*` datasets, on the same `source.imports` table and format boundary.
+- **Reused, not duplicated:**
+  - `market.price_observations` / `market.corporate_actions` and their `0010` unique indexes (idempotency);
+  - `store.insert_new`, which was `_insert`;
+  - `validate_bar` / `validate_currency`;
+  - the content-addressed raw archive, for the original file;
+  - the `manual_import` provider row (`provider_code`);
+  - `audit.record`.
+- **Migration `0011`:**
+  - `source.imports` (Blueprint §3.3, append-only), extended with:
+    - source name and reference;
+    - status (`complete` / `partial`);
+    - validation summary;
+    - skipped records;
+    - archive path and size.
+  - The two observation tables get `import_id` + `import_row`. `fetch_id` becomes nullable, and a CHECK requires **exactly one origin** (fetch or import).
+  - `provider_listings` is unchanged.
+- **Templates:** `market_prices.v1` and `corporate_actions.v1`, versioned and strict.
+  - Unknown columns reject the file.
+  - A listing is ticker + MIC, matching exactly one security. Imports never create listings.
+  - Dates are ISO `YYYY-MM-DD`, never in the future.
+  - Numbers are plain decimals.
+  - The close basis is declared on every row (`raw` / `split_adjusted`, never `unverified`), with one basis per listing per file.
+  - `adj_close` needs its own declared basis and is never substituted for `close`, or the reverse.
+  - Full format: `docs/operations/market-data-import.md`.
+- **Currency:**
+  - Prices must match the listing's **declared** `trading_currency`.
+  - A listing without one is rejected. The new audited command `listing-set-currency` sets it once and refuses to change it.
+  - Nothing is converted or inferred, and minor-unit codes (`GBX`, `ZAC`, `ILA`) are rejected.
+  - Dividends keep their declared currency, with `currency_source = import_file`; a currency different from the trading currency is a warning.
+- **Workflow:**
+  - **Validation reads only.** Each record is classified `accepted` / `duplicate` / `conflict` / `rejected`.
+  - **Ingestion** re-validates the same bytes and requires the reviewed SHA-256 (`--expect-sha256`). It refuses file errors, and refuses any skipped record unless `--allow-partial` is given.
+  - It then archives the file, writes one import row and the accepted records, and records the audit event, all in one transaction.
+  - A file with nothing new creates no import row.
+- **Conflicts:** a stored `manual_import` observation with the same key but different values is never revised by an import; the record is reported and skipped. Other providers are separate sources: a close that differs by more than 0.5% is a warning only (§4.5).
+- **Series separation:** `current_prices` takes an optional `close_basis` filter, so raw and split-adjusted series of one listing are never mixed.
+- **Provider gate:** `source.providers.enabled` gates **network retrieval** (D54: the client refuses while disabled). A file import makes no network request and is an explicit analyst action, so it does not require enabling `manual_import`. That row stays disabled and is used only as the provenance code. *(Proposed in Session 4; owner review requested.)*
+- **XLSX:** `market/tabular.py` is the format boundary: readers yield a `RawTable` of cell text, and everything downstream is format-agnostic. `.xlsx` is rejected with a clear message until a spreadsheet dependency is approved.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
@@ -502,3 +548,5 @@ Status as of 2026-11-06 (end of Session 3).
 | P10 | **License** | **Resolved** 2026-11-06: MIT (owner's choice), `LICENSE`, copyright Adrian Delic de Souza |
 | P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | **Resolved** 2026-11-06: owner keeps the current structure; internal docs are published as is |
 | P12 | **Publication**: push of `main`, `m2-ingestion`, `m0-foundation` and `m1-engine` to `origin` | **Resolved** 2026-11-06: owner-approved; pushed without force, `main` is the default branch |
+| P13 | **Provider gate for file imports** (D55): file imports run with `manual_import` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
+| P14 | **Spreadsheet dependency for `.xlsx` import** (e.g. `openpyxl`) | Open: needed only when XLSX import is wanted; CSV works without it |

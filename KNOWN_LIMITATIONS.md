@@ -187,6 +187,20 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **No scheduler, CLI or listing UI** for prices yet. Provider symbols must be set on the security (D15).
 - **Quotes:** the provider's latest quote is stored for reference only, never used as a valuation price.
 
+## 4j. Market-data CSV import (M2, Session 4)
+
+- **Prices and corporate actions only.** Financial-statement import (§4.6 line-item template → `reported` dataset) is not built.
+- **CSV only.** `.xlsx` needs a spreadsheet dependency (owner approval); until then it is refused with a message to export as CSV.
+- **CLI only:** no API endpoint or UI yet. The worker mounts only the raw archive, so files are passed on stdin (`--file -`). The importing user is not recorded from the CLI (`imported_by` is empty, as with other CLI actions).
+- **Existing listings only:**
+  - imports never create listings, so a TSX listing (e.g. `RY` on `XTSE`) must exist first, and manual listing entry (D15) is not built;
+  - the six SEC listings have **no declared trading currency**, so the analyst must run `listing-set-currency` before importing (nothing was set on their behalf).
+- **No revision path:** a corrected value for an already-imported date is reported as a conflict and skipped. Revising imported data (with a reason, as a new observation) is future work.
+- **Corporate-action keys:** one action per listing, kind and ex-date. Two cash dividends on the same ex-date (e.g. regular + special) conflict; there is no `special_dividend` kind yet. Splits are compared by numerator and denominator as written, so `4,1` vs `8,2` is reported as a conflict.
+- **Currency list:** codes are checked for ISO 4217 form and minor-unit codes, not against a reference table of active currencies (there is no `ref.currencies` yet). Prices are protected by the equality check against the listing's declared currency; dividend currencies rely on the form check.
+- **Calendar:** weekend dates are warned, not rejected. Exchange holiday calendars are not checked.
+- **Imported prices are not wired** into valuations or dataset builds, the same as provider prices (§4i).
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

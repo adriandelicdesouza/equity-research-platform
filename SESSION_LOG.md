@@ -474,3 +474,19 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - `source.imports` is not created yet;
   - the `manual_import` provider row exists (disabled);
   - no spreadsheet library is locked, so `.xlsx` needs owner approval for a dependency.
+
+### Session 4 — M2 market-data CSV import (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `370255b`, clean, 8 local commits ahead of `origin/m2-ingestion`, none pushed. Dev DB at `0010`, every provider disabled, 0 price observations. Baseline `make check`: backend 308, engine 109, frontend 2.
+- **Scope settled** (D55): Blueprint §4.6 is a *statement* template; this milestone is the §4.2 / D16 price and corporate-action import. Statement import stays a separate workflow on the same `source.imports` table and format boundary.
+- **Built:**
+  - migration `0011`: append-only `source.imports`; `import_id` / `import_row` on price observations and corporate actions; `fetch_id` nullable, with exactly one origin (CHECK);
+  - `market/tabular.py` (CSV reader; format boundary; `.xlsx` refused until a dependency is approved);
+  - `market/file_import.py` (templates `market_prices.v1` and `corporate_actions.v1`, validation, duplicate and conflict classification, hash-confirmed ingestion);
+  - `market/listings.py` (ticker + MIC resolution; audited one-time `trading_currency` declaration);
+  - `current_prices(close_basis=…)`;
+  - CLI `market-import-validate`, `market-import`, `market-import-list`, `listing-set-currency`;
+  - header templates in `templates/market/`, format reference `docs/operations/market-data-import.md`;
+  - D55, P13 (provider gate for file imports, owner review), P14 (XLSX dependency), KNOWN_LIMITATIONS §4j.
+- **Dev DB:** migrated `0010 → 0011`. No import, price or currency data written. The read-only `market-import-validate` ran in the worker against the dev DB, and every row was rejected with the expected reasons: the SEC listings have no declared trading currency, plus an unknown listing, a bad date, a bad currency and a bad basis. A refused-ingest demonstration against the dev DB was blocked by the session's permission policy; that path is covered by tests on `erp_test`.
+- **Tests:** 88 new (backend 308 → 396), all on the disposable `erp_test` database. `make check` passes. No network requests; `yahoo_chart` and `manual_import` stay disabled.

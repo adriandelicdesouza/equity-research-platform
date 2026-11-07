@@ -114,3 +114,34 @@ class ReportedFact(Base):
     accession_no: Mapped[str] = mapped_column(String(20), nullable=False)
     frame: Mapped[str | None] = mapped_column(String(16))
     fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
+
+
+class SourceImport(Base):
+    """One ingested file (Blueprint §3.3 ``source.imports``; append-only, migration 0011).
+
+    The exact file bytes are kept in the raw archive (``stored_path``, verified against
+    ``file_sha256`` on read). ``summary`` holds the validation counts; ``skipped`` lists every
+    record that was not stored and why."""
+
+    __tablename__ = "imports"
+    __table_args__ = {"schema": "source"}  # noqa: RUF012
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider_code: Mapped[str] = mapped_column(
+        String(32), ForeignKey("source.providers.code"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    stored_path: Mapped[str] = mapped_column(Text, nullable=False)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    skipped: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    imported_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("auth.users.id"))
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
