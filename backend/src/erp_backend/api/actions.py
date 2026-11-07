@@ -18,20 +18,34 @@ Every action is a POST that:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from typing import Annotated, Any
+from datetime import date, datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from erp_backend.auth.deps import AuthContext, DbSession, authenticated, require
+from erp_backend.auth.deps import AppSettings, AuthContext, DbSession, authenticated, require
 from erp_backend.auth.rbac import Permission
+from erp_backend.datasets import (
+    IMPORT_BASIS,
+    build_dataset,
+    build_import_dataset,
+    discard_dataset,
+    lock_dataset,
+    rebuild_draft,
+    verify_dataset,
+)
 from erp_backend.errors import ApiError
-from erp_backend.models import ApiAction
+from erp_backend.ingestion.selection import Policy
+from erp_backend.models import ApiAction, Company, FinancialDataset
+from erp_backend.read import datasets as read_datasets
 from erp_backend.read.common import MAX_LIMIT, paginate
-from erp_backend.read.schemas import Page
+from erp_backend.read.schemas import DatasetOut, Page
 from erp_backend.readonly import read_only_db
+from erp_backend.workflow import ActionOut, perform
 
 router = APIRouter(tags=["workflow actions"])
 
@@ -63,9 +77,15 @@ class ActionRecordOut(BaseModel):
 
 def _record_out(r: ApiAction) -> ActionRecordOut:
     return ActionRecordOut(
-        id=r.id, action=r.action, target=r.target, outcome=r.outcome, status_code=r.status_code,
-        idempotency_key=r.idempotency_key, created_at=r.created_at, response=r.response,
-    )  # fmt: skip
+        id=r.id,
+        action=r.action,
+        target=r.target,
+        outcome=r.outcome,
+        status_code=r.status_code,
+        idempotency_key=r.idempotency_key,
+        created_at=r.created_at,
+        response=r.response,
+    )
 
 
 @router.get("/actions", response_model=Page[ActionRecordOut])
@@ -97,4 +117,245 @@ def get_action(
     return _record_out(row)
 
 
-__all__ = ["DbSession", "IdempotencyKey", "requires", "router"]
+# --------------------------------------------------------------------------- datasets
+
+
+class _Body(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+Reason = Annotated[str, Field(min_length=10, max_length=2000)]
+
+
+class BuildRequest(_Body):
+    basis: Literal["standardized", "reported"] = "standardized"
+    policy: Literal["latest_reported", "first_reported"] = "latest_reported"
+    facts_as_of: date | None = Field(
+        default=None, description="SEC cut-off (standardized basis); default: latest filing"
+    )
+
+
+class RebuildRequest(_Body):
+    basis: Literal["standardized", "reported"] = "standardized"
+    reason: Reason
+
+
+class ReasonRequest(_Body):
+    reason: Reason
+
+
+class DatasetActionOut(BaseModel):
+    dataset: DatasetOut
+    created: bool | None = Field(
+        default=None, description="Build: false when identical to the current version"
+    )
+    validation: dict[str, Any] | None = Field(description="Validation summary of the build")
+    conflicts: dict[str, Any] | None = Field(description="Conflict summary of the build")
+
+
+class VerificationOut(BaseModel):
+    dataset_id: uuid.UUID
+    ok: bool
+    stored_matches: bool
+    validation_matches: bool
+    rebuild_matches: bool | None
+    inputs_match: bool
+    mapping_matches: bool
+    recomputed_sha256: str
+
+
+def _dataset_result(d: FinancialDataset, created: bool | None = None) -> DatasetActionOut:
+    summary = d.source_summary or {}
+    return DatasetActionOut(
+        dataset=read_datasets._dataset(d),
+        created=created,
+        validation=summary.get("validation"),
+        conflicts=summary.get("conflicts"),
+    )
+
+
+def _company(db: Session, company_id: uuid.UUID) -> Company:
+    company = db.get(Company, company_id)
+    if company is None:
+        raise ApiError(404, "not_found", f"No company {company_id}.")
+    return company
+
+
+def _dataset_row(db: Session, dataset_id: uuid.UUID) -> FinancialDataset:
+    dataset = db.get(FinancialDataset, dataset_id)
+    if dataset is None:
+        raise ApiError(404, "not_found", f"No dataset {dataset_id}.")
+    return dataset
+
+
+@router.post(
+    "/companies/{company_id}/datasets/build",
+    response_model=ActionOut,
+    responses={200: {"description": "Identical to the current version (nothing stored)"}},
+    status_code=201,
+)
+def build_dataset_action(
+    company_id: uuid.UUID,
+    body: BuildRequest,
+    db: DbSession,
+    settings: AppSettings,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Build the next draft version (SEC ``standardized`` or import ``reported`` basis)."""
+
+    def run() -> tuple[int, BaseModel]:
+        company = _company(db, company_id)
+        build = build_import_dataset if body.basis == IMPORT_BASIS else build_dataset
+        result = build(
+            db,
+            company,
+            mappings_root=settings.mappings_root,
+            mapping_version=settings.mapping_version,
+            policy=Policy(body.policy),
+            facts_as_of=body.facts_as_of,
+            user_id=ctx.user.id,
+        )
+        return (201 if result.created else 200), _dataset_result(result.dataset, result.created)
+
+    return perform(
+        db,
+        ctx,
+        action="dataset.build",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(company_id),
+        run=run,
+    )
+
+
+@router.post("/companies/{company_id}/datasets/rebuild", response_model=ActionOut, status_code=201)
+def rebuild_dataset_action(
+    company_id: uuid.UUID,
+    body: RebuildRequest,
+    db: DbSession,
+    settings: AppSettings,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Discard the open draft of ``basis`` (if any) and build a new one with current inputs
+    and resolutions (keeps its selection policy and cut-off). Locked versions are untouched."""
+
+    def run() -> tuple[int, BaseModel]:
+        company = _company(db, company_id)
+        result = rebuild_draft(
+            db,
+            company,
+            mappings_root=settings.mappings_root,
+            mapping_version=settings.mapping_version,
+            reason=body.reason,
+            user_id=ctx.user.id,
+            basis=body.basis,
+        )
+        return (201 if result.created else 200), _dataset_result(result.dataset, result.created)
+
+    return perform(
+        db,
+        ctx,
+        action="dataset.rebuild",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(company_id),
+        run=run,
+    )
+
+
+@router.post("/datasets/{dataset_id}/verify", response_model=ActionOut, status_code=200)
+def verify_dataset_action(
+    dataset_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    ctx: requires(Permission.COMPANY_READ),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Re-serialize stored rows and rebuild from sources; both must reproduce the hashes.
+    Writes nothing to the dataset (the action itself is logged)."""
+
+    def run() -> tuple[int, BaseModel]:
+        d = _dataset_row(db, dataset_id)
+        v = verify_dataset(db, d, mappings_root=settings.mappings_root)
+        return 200, VerificationOut(
+            dataset_id=d.id,
+            ok=v.ok,
+            stored_matches=v.stored_matches,
+            validation_matches=v.validation_matches,
+            rebuild_matches=v.rebuild_matches,
+            inputs_match=v.inputs_match,
+            mapping_matches=v.mapping_matches,
+            recomputed_sha256=v.recomputed_sha256,
+        )
+
+    return perform(
+        db,
+        ctx,
+        action="dataset.verify",
+        request={"dataset_id": str(dataset_id)},
+        idempotency_key=idempotency_key,
+        target=str(dataset_id),
+        run=run,
+    )
+
+
+@router.post("/datasets/{dataset_id}/lock", response_model=ActionOut, status_code=200)
+def lock_dataset_action(
+    dataset_id: uuid.UUID,
+    body: ReasonRequest,
+    db: DbSession,
+    settings: AppSettings,
+    ctx: requires(Permission.DATASET_LOCK),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Lock a verified draft (refused with open material conflicts or ambiguous values).
+    **Pending approval (P15):** ``dataset:lock`` is held by no role yet."""
+
+    def run() -> tuple[int, BaseModel]:
+        _dataset_row(db, dataset_id)
+        d = lock_dataset(
+            db,
+            dataset_id,
+            mappings_root=settings.mappings_root,
+            reason=body.reason,
+            user_id=ctx.user.id,
+        )
+        return 200, _dataset_result(d)
+
+    return perform(
+        db,
+        ctx,
+        action="dataset.lock",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(dataset_id),
+        run=run,
+    )
+
+
+@router.post("/datasets/{dataset_id}/discard", response_model=ActionOut, status_code=200)
+def discard_dataset_action(
+    dataset_id: uuid.UUID,
+    body: ReasonRequest,
+    db: DbSession,
+    ctx: requires(Permission.COMPANY_WRITE),  # type: ignore[valid-type]
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Discard a draft (its header and conflicts stay as history; locked versions refuse)."""
+
+    def run() -> tuple[int, BaseModel]:
+        _dataset_row(db, dataset_id)
+        d = discard_dataset(db, dataset_id, reason=body.reason, user_id=ctx.user.id)
+        return 200, _dataset_result(d)
+
+    return perform(
+        db,
+        ctx,
+        action="dataset.discard",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(dataset_id),
+        run=run,
+    )
