@@ -49,6 +49,11 @@ export function explainError(err: unknown): { title: string; message: string } {
     case 404:
       return { title: "Not found", message: err.message };
     case 409:
+      if (err.code === "ambiguous_series")
+        return {
+          title: "Choose a series",
+          message: `${err.message} Pick a provider and close basis in the filters above.`,
+        };
       return { title: "Refused by a business rule", message: err.message };
     case 413:
       return { title: "File too large", message: err.message };

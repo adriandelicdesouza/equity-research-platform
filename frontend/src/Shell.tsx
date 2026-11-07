@@ -1,6 +1,7 @@
 import { ActionHistory } from "./features/actions/ActionHistory";
 import { CompanySearch } from "./features/company/CompanySearch";
 import { CompanyWorkspace } from "./features/company/CompanyWorkspace";
+import { ListingsPage } from "./features/listings/ListingsPage";
 import { ImportsPage } from "./features/imports/ImportsPage";
 import { SystemPage } from "./features/system/SystemPage";
 import { href, useRoute } from "./lib/router";
@@ -8,6 +9,7 @@ import { useSession } from "./session";
 
 const NAV = [
   { key: "companies", label: "Companies" },
+  { key: "listings", label: "Listings" },
   { key: "imports", label: "Imports" },
   { key: "actions", label: "Action history" },
   { key: "system", label: "System" },
@@ -20,6 +22,7 @@ export function Shell({ onLogout }: { onLogout: () => void }) {
 
   let page;
   if (section === "companies" && rest[0]) page = <CompanyWorkspace companyId={rest[0]} tab={rest[1] ?? "overview"} route={route} />;
+  else if (section === "listings") page = <ListingsPage route={route} />;
   else if (section === "imports") page = <ImportsPage route={route} />;
   else if (section === "actions") page = <ActionHistory actionId={rest[0] ?? null} route={route} />;
   else if (section === "system") page = <SystemPage />;

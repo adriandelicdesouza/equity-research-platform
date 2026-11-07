@@ -120,7 +120,9 @@ export function OverviewTab({ company: c, route }: { company: CompanyDetailOut; 
               <tbody>
                 {c.listings.map((l) => (
                   <tr key={l.id}>
-                    <th scope="row">{l.ticker}</th>
+                    <th scope="row">
+                      <a href={href(["listings", l.id])}>{l.ticker}</a>
+                    </th>
                     <td>{l.exchange_name}</td>
                     <td>{l.exchange_mic ?? "—"}</td>
                     <td>{l.trading_currency ?? <span className="muted">not declared</span>}</td>
@@ -136,6 +138,11 @@ export function OverviewTab({ company: c, route }: { company: CompanyDetailOut; 
             </table>
           </div>
         )}
+        <p className="small">
+          Select a ticker for its prices, corporate actions and trading currency.{" "}
+          <a href={href(["listings", "register"], { company: c.id })}>Register another listing</a> for this
+          company.
+        </p>
       </section>
 
       <section className="card span-2">
