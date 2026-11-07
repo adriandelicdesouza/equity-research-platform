@@ -71,3 +71,37 @@ def test_migrations_upgrade_downgrade_upgrade(settings: Settings) -> None:
         engine.dispose()
     finally:
         drop_database(name)
+
+
+def test_rates_and_reference_migrations_downgrade_only_without_data(settings: Settings) -> None:
+    """0014/0015 (D58): clean downgrade and re-upgrade while empty; refused once data exists."""
+    name = "erp_test_migrations_d58"
+    recreate_database(name)
+    try:
+        engine = create_engine(database_url(settings, owner=True, database=name))
+        migrate(name)
+        migrate(name, "0013", down=True)
+        assert "rate_series" not in inspect(engine).get_table_names(schema="market")
+        assert "reference_datasets" not in inspect(engine).get_table_names(schema="ref")
+        migrate(name)
+        with engine.begin() as conn:
+            assert conn.execute(text("SELECT count(*) FROM market.rate_series")).scalar() == 19
+            conn.execute(
+                text(
+                    "INSERT INTO source.provider_fetches (id, provider_code, url) VALUES "
+                    "('00000000-0000-0000-0000-000000000001', 'us_treasury', 'https://x.invalid')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO market.rate_observations (series_code, provider_code, obs_date,"
+                    " value, fetch_id) VALUES ('UST_PAR_10Y', 'us_treasury', '2024-03-05', 4.15,"
+                    " '00000000-0000-0000-0000-000000000001')"
+                )
+            )
+        migrate(name, "0014", down=True)  # 0015 has no data: fine
+        with pytest.raises(DBAPIError, match="downgrade would lose provenance"):
+            migrate(name, "0013", down=True)
+        engine.dispose()
+    finally:
+        drop_database(name)

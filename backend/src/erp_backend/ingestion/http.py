@@ -131,6 +131,38 @@ class ProviderClient:
         self._client.close()
 
 
+class ProviderDisabledError(ProviderNotConfiguredError):
+    """The provider is disabled in ``source.providers``; no request may be made."""
+
+
+def gated_client(
+    db: Session,
+    provider_code: str,
+    user_agent: str,
+    per_second: float,
+    transport: httpx.BaseTransport | None = None,
+) -> ProviderClient:
+    """A client for a provider the owner has enabled; refuses otherwise (P9, D54, D58).
+
+    ``source.providers.enabled`` gates **network retrieval**. Nothing in the code base sets
+    it: enabling a provider is the owner's decision, after approving its first live request.
+    """
+    from erp_backend.models import Provider
+
+    row = db.get(Provider, provider_code)
+    if row is None or not row.enabled:
+        raise ProviderDisabledError(
+            f"The {provider_code} provider is disabled. Live requests need the owner's "
+            "approval (P9); enable it in source.providers only after that approval."
+        )
+    return ProviderClient(
+        provider_code=provider_code,
+        user_agent=user_agent,
+        per_second=per_second,
+        transport=transport,
+    )
+
+
 def fetch_and_archive(
     db: Session,
     client: ProviderClient,

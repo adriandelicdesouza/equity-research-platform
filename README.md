@@ -42,7 +42,7 @@ The project is under active development. **Implemented and tested:**
 |---|---|---|
 | M0 | Foundation: workspace, auth, audit, deployment | Done |
 | M1 | Valuation engine and methodology | Done |
-| M2 | Data ingestion and standardization: SEC (done), statement mapping (v1 done), versioned datasets (done), integrity checks, classification, market data (offline boundary done), CSV market-data import (done), manual listing registration (done), rates data, statement import | In progress |
+| M2 | Data ingestion and standardization: SEC (done), statement mapping (v1 done), versioned datasets (done), integrity checks, classification, market data (offline boundary done), CSV market-data import (done), manual listing registration (done), statement import (done), rates/FX adapters (offline, done), Damodaran reference datasets (done) | In progress |
 | M3 | Analyst workflow UI: company → financials → DCF → trace inspection | Planned |
 | M4 | Scenarios, sensitivity analysis, saved immutable valuations, exports | Planned |
 | M5 | Production hardening: backups, deployment, monitoring | Planned |

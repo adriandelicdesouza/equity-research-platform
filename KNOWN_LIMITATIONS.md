@@ -223,6 +223,26 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Not exercised on real data:** no statement file has been imported in dev, so only a read-only validation smoke test against stored AAPL data has run (matching SEC value → accepted).
 - **Valuation:** import datasets do not feed valuations yet, like every dataset in M2.
 
+## 4m. Rates, FX and Damodaran reference data (M2, Session 6)
+
+- **No live data:**
+  - Treasury and Bank of Canada adapters are tested on synthetic payloads only;
+  - both providers stay disabled, and the first live request needs P9;
+  - the formats are taken from the §0.4 probe and documentation and are not re-verified (Treasury URL parameters, Valet missing-value form, labels of FX series other than `FXUSDCAD`).
+- **Coverage:**
+  - Treasury par yields only: no real yields, bill rates or long-term averages;
+  - GoC benchmark yields 2Y–LONG only: no policy rate, T-bills or real-return bonds;
+  - FX USD/EUR/GBP against CAD only;
+  - FRED fallback not built;
+  - no scheduler: fetches are manual CLI actions once enabled.
+- **No FX conversion or inversion** anywhere; cross rates are not derived.
+- **Damodaran:**
+  - CSV transcription of the published spreadsheets, not direct parsing (XLSX needs P14);
+  - industry names are not mapped to the platform's industry/SIC classification;
+  - regional aggregates in the CRP table are `unmapped` by design.
+- **Dev DB:** `0015` applied; series registry seeded; no observations, fetches or reference datasets stored.
+- **Not wired into valuations:** Rf, ERP, CRP, betas and spreads don't yet feed WACC inputs (§7.5).
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

@@ -181,3 +181,57 @@ class ProviderListing(_Observed, Base):
     quote_price: Mapped[Decimal | None] = mapped_column(Numeric)
     quote_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+class RateSeries(Base):
+    """A registered interest-rate series (migration 0014, D58); read-only reference rows."""
+
+    __tablename__ = "rate_series"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    provider_code: Mapped[str] = mapped_column(ForeignKey("source.providers.code"))
+    provider_series_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    tenor: Mapped[str] = mapped_column(String(8), nullable=False)
+    tenor_months: Mapped[int | None] = mapped_column(Integer)
+    unit: Mapped[str] = mapped_column(String(16), nullable=False)
+    quote_convention: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class RateObservationRow(Base):
+    """One published rate value in percentage points (append-only; migration 0014)."""
+
+    __tablename__ = "rate_observations"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    series_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    obs_date: Mapped[date] = mapped_column(Date, nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class FxRate(Base):
+    """One published FX rate: ``rate`` units of ``quote`` per 1 ``base`` (append-only; 0014)."""
+
+    __tablename__ = "fx_rates"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    base: Mapped[str] = mapped_column(String(3), nullable=False)
+    quote: Mapped[str] = mapped_column(String(3), nullable=False)
+    obs_date: Mapped[date] = mapped_column(Date, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    provider_code: Mapped[str] = mapped_column(ForeignKey("source.providers.code"))
+    provider_series_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    fetch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.provider_fetches.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

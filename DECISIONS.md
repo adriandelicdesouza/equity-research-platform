@@ -593,6 +593,44 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Interim coverage** for imports is `partial` whenever interim columns exist, never `full` (conservative; D44's completeness rule is not applied to imports yet).
 - **Provider gate:** like D55, the import runs with `manual_import` disabled (P13 covers both).
 
+### D58. Rates, FX and Damodaran reference datasets: offline adapters and versioned reference data (§3.2, §3.3, §4.2, §7.5; D54, D55, D57)
+- **Reused, not duplicated:**
+  - the provider rows seeded in `0003` (`us_treasury`, `bank_of_canada`, `damodaran`), unchanged and **disabled**;
+  - `fetch_and_archive` (archive-first);
+  - `market/tabular.py`;
+  - `source.imports`;
+  - the raw archive and `audit.record`;
+  - the D54 append-only, idempotent observation pattern.
+
+  A new generic `ingestion.http.gated_client` refuses any client while a provider is disabled. Yahoo's gate is unchanged.
+- **Rate-series identity (migration `0014`):** a series is one provider series with one rate type, currency, tenor, unit and convention.
+  - `UST_PAR_<tenor>` are the 13 par-yield columns.
+  - `GOC_BMK_<tenor>` are the GoC benchmark yields 2Y/3Y/5Y/7Y/10Y/LONG.
+  - The Blueprint's example codes `UST_10Y` / `GOC_10Y` are refined to these names so the rate family is part of the code.
+  - The code-level registry (`rates/model.py`) is seeded into append-only `market.rate_series`; a test keeps the two equal.
+  - A composite FK ties each observation to its series' own provider.
+- **Units:** rates are stored in percentage points as published; conversion to fractions belongs to the future valuation-input boundary.
+- **FX direction:** `market.fx_rates` stores quote per 1 base plus the provider series id.
+  - Registered series: Valet `FXUSDCAD`/`FXEURCAD`/`FXGBPCAD`, as X→CAD.
+  - The payload label must state the registered direction; a contradicting label rejects the series.
+  - Rates are never inverted or crossed (no conversion in M2).
+- **Missing values** are counted and reported, never stored, interpolated or carried forward.
+- **Revisions:** a changed value for a stored (series, date) is a new row (`revised`), and readers take the latest. In-payload conflicts keep neither value.
+- **Unverified, therefore not assumed:**
+  - the Treasury URL's parameters beyond the §0.4 probe;
+  - Valet's representation of unavailable observations;
+  - the labels of FX series other than `FXUSDCAD`.
+
+  New Treasury tenor columns (e.g. a 6-week bill) are reported and ignored until registered.
+- **Damodaran (migration `0015`):** four strict CSV templates (`implied_erp`, `country_risk`, `industry_betas`, `rating_spreads`). The published spreadsheets change layout, so they are transcribed, not parsed.
+  - Percentage cells must carry `%`.
+  - **Identifier registries:** ISO 3166-1 alpha-2, the index `SP500`, eight beta regions, `large_cap`/`small_cap`, and the S&P-style rating scale. Anything outside them is `unmapped`.
+  - **Storage:** `ref.reference_datasets` (lineage = kind + edition date + region + variant; `version_no`; `supersedes_id` + reason required after version 1; canonical content SHA-256) and `ref.reference_values` (record key × field, exact decimal + unit, or text). Both append-only.
+  - Not forced into `fin.financial_values`, which has a company/period/line-item shape.
+  - **Workflow (D55/D57 conventions):** validation reads only; ingestion re-validates under an advisory lock on the lineage, needs `--expect-sha256`, and refuses skipped records without `--allow-partial`. A changed file needs `--supersede --reason`. An identical file stores nothing.
+- **Provider gate for file imports:** like D55/D57, a Damodaran file import runs with `damodaran` disabled. P13 now covers it too.
+- **Not wired:** nothing feeds WACC yet. When it is (§7.5), Damodaran values enter as `suggested` with table + edition provenance, and Rf is taken in the cash-flow currency from these series.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
@@ -626,5 +664,5 @@ Status as of 2026-11-06 (end of Session 3).
 | P10 | **License** | **Resolved** 2026-11-06: MIT (owner's choice), `LICENSE`, copyright Adrian Delic de Souza |
 | P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | **Resolved** 2026-11-06: owner keeps the current structure; internal docs are published as is |
 | P12 | **Publication**: push of `main`, `m2-ingestion`, `m0-foundation` and `m1-engine` to `origin` | **Resolved** 2026-11-06: owner-approved; pushed without force, `main` is the default branch |
-| P13 | **Provider gate for file imports** (D55, D57): market-data and financial-statement file imports run with `manual_import` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
+| P13 | **Provider gate for file imports** (D55, D57, D58): market-data, financial-statement and Damodaran file imports run with `manual_import` / `damodaran` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
 | P14 | **Spreadsheet dependency for `.xlsx` import** (e.g. `openpyxl`) | Open: needed only when XLSX import is wanted; CSV works without it |

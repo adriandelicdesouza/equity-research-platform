@@ -1206,7 +1206,12 @@ def main(argv: list[str] | None = None) -> int:
     lsh = sub.add_parser("listing-show", help="Show one listing with its provenance.")
     lsh.add_argument("--ticker", required=True)
     lsh.add_argument("--mic", required=True)
+    from erp_backend import cli_reference
+
+    cli_reference.register(sub)
     args = parser.parse_args(argv)
+    if args.command in cli_reference.COMMANDS:
+        return cli_reference.dispatch(args)
     if args.command == "create-user":
         return _create_user(args)
     if args.command == "enqueue-ping":

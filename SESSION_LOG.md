@@ -550,3 +550,34 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
 - **Defect found and fixed:** the D51 SUBTOTAL check only evaluated `reported` parents, so imported subtotals would have gone unchecked. It now also checks `manual_import` parents; SEC outputs are unchanged.
 - **Dev DB:** migrated `0012 → 0013` via `make up-dev`, with no data written. All 6 SEC drafts re-verified byte-identically with the refactored code (stored rows, checks, rebuild). A read-only `statement-import-validate` in the worker, using AAPL FY2026 revenue copied from its own SEC dataset, resolved the 52/53-week fiscal year, compared with SEC (equal → accepted) and flagged an unknown code. Import and audit counts were unchanged.
 - **Tests:** 59 new (backend 440 → 499), synthetic and on `erp_test` only. No network requests; all providers stay disabled.
+
+### Session 6 — M2 rates, FX and Damodaran reference data (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `c1d0d91`, clean, 12 ahead of `origin/m2-ingestion` (`51cd1fa`), nothing pushed. After `make up-dev` the dev DB showed:
+  - Alembic `0013`;
+  - all 7 providers disabled;
+  - 0 imports and 0 prices.
+
+  Baseline `make check`: backend 499, engine 109, frontend 2. No discrepancy.
+- **Design recorded as D58.**
+- **Rates and FX:**
+  - `rates/model.py`: series registry, units, FX direction, shared checks;
+  - `rates/treasury.py`: par-yield CSV;
+  - `rates/bank_of_canada.py`: Valet JSON, GoC yields + FX with a label direction check;
+  - `rates/store.py`: append-only idempotent storage, revisions, archive re-ingest, `current_rates`, and `current_fx` (no inversion);
+  - `ingestion.http.gated_client`: refuses while a provider is disabled;
+  - migration `0014`: `market.rate_series` (19 seeded), `rate_observations`, `fx_rates`.
+- **Damodaran:**
+  - `reference/damodaran.py`: four CSV templates, validation, versioned ingestion;
+  - `reference/countries.py`: ISO 3166-1 alpha-2;
+  - migration `0015`: `ref.reference_datasets` / `ref.reference_values`, append-only with lineage, version and supersede CHECKs;
+  - blank templates in `templates/reference/`.
+- **CLI** (`cli_reference.py`):
+  - rates and FX: `rates-parse-file`, `rates-fetch` (gated), `rates-ingest-archived`, `rate-series-list`, `rates-show`, `fx-show`;
+  - reference data: `reference-import-validate`, `reference-import`, `reference-dataset-list`, `reference-dataset-show`.
+- **Docs:** `docs/operations/reference-data-import.md`, KNOWN_LIMITATIONS §4m, README status.
+- **Dev DB:** migrated `0013 → 0015` via `make up-dev` (additive; registry seed only).
+  - Read-only smoke tests: `rate-series-list`, `reference-dataset-list`, `rates-fetch` refused while disabled, and a `reference-import-validate` preview.
+  - No fetches, observations, imports or reference datasets were written. The SEC data is unchanged (88,160 facts).
+- **Tests:** 110 new (backend 499 → 609), all synthetic: parser tests without a DB; store, gate, constraint and CLI tests on `erp_test`; migration up/down plus refusal of a downgrade once data exists. The fetch path uses `httpx.MockTransport`; no network requests were made.
+- **Test-harness note:** an owner-role `TRUNCATE` while the test session held uncommitted rows deadlocked once. The owner append-only tests now insert their own rows in their own transaction.
