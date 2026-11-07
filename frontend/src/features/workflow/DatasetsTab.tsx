@@ -7,6 +7,7 @@ import {
   Badge,
   DateTime,
   Dialog,
+  DialogButtons,
   Empty,
   ErrorMessage,
   GuardedButton,
@@ -321,33 +322,6 @@ function invalidateCompany(qc: ReturnType<typeof useQueryClient>, companyId: str
   void qc.invalidateQueries({ queryKey: ["dataset"] });
   void qc.invalidateQueries({ queryKey: ["integrity"] });
   void qc.invalidateQueries({ queryKey: ["actions"] });
-}
-
-function DialogButtons({
-  pending,
-  label,
-  danger,
-  disabled,
-  onCancel,
-  onConfirm,
-}: {
-  pending: boolean;
-  label: string;
-  danger?: boolean;
-  disabled?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="form-actions">
-      <button type="button" className="secondary" onClick={onCancel}>
-        Cancel
-      </button>
-      <button type="button" className={danger ? "danger" : undefined} disabled={pending || disabled} onClick={onConfirm}>
-        {pending ? "Working…" : label}
-      </button>
-    </div>
-  );
 }
 
 /** The outcome of a dataset action, with a link to its record and to any new version. */

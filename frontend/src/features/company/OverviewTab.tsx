@@ -94,7 +94,8 @@ export function OverviewTab({ company: c, route }: { company: CompanyDetailOut; 
           ]}
         />
         <p className="small muted">
-          Classification is confirmed through the workflow API or CLI by an analyst (D53).
+          Analysts confirm the classification under{" "}
+          <a href={href(["companies", c.id, "classification"])}>Classification</a> (D53).
         </p>
       </section>
 

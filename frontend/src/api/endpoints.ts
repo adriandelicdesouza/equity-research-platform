@@ -8,24 +8,50 @@ import type {
   ActionRecordOut,
   BuildRequest,
   CompanyDetailOut,
+  ConfirmClassificationRequest,
+  CurrencyRequest,
   DatasetDetailOut,
   HealthOut,
   ImportDetailOut,
   IntegrityOut,
+  ListingOut,
+  ListingRequest,
   MeOut,
   Page_ActionRecordOut_,
+  Page_ClassificationOut_,
   Page_CompanyOut_,
   Page_ConflictOut_,
+  Page_CorporateActionOut_,
   Page_DatasetOut_,
   Page_FinancialValueOut_,
   Page_ImportOut_,
+  Page_ListingOut_,
+  Page_PriceOut_,
+  Page_ReferenceDatasetOut_,
+  Page_ReferenceRecordOut_,
   Page_ResolutionOut_,
   RebuildRequest,
+  ReferenceDatasetDetailOut,
   ResolutionRequest,
   StatementOut,
 } from "./schema.gen";
 
 export type Statement = "IS" | "BS" | "CF";
+
+/** Report of POST /listings/validate (read-only check; not part of the OpenAPI schema). */
+export interface ListingCheck {
+  listing: Record<string, unknown>;
+  issuer: Record<string, unknown>;
+  suggested_provider_symbols: Record<string, string>;
+  errors: { code: string; message: string }[];
+  warnings: { code: string; message: string }[];
+  ok: boolean;
+}
+
+export interface DateRange {
+  start?: string;
+  end?: string;
+}
 
 export interface Paging {
   limit?: number;
@@ -100,6 +126,31 @@ export const api = {
   actions: (q: { action?: string } & Paging = {}) =>
     request<Page_ActionRecordOut_>("GET", "/actions", { query: { ...q } }),
   action: (actionId: string) => request<ActionRecordOut>("GET", `/actions/${id(actionId)}`),
+  classifications: (companyId: string, q: Paging = {}) =>
+    request<Page_ClassificationOut_>("GET", `/companies/${id(companyId)}/classifications`, {
+      query: { ...q },
+    }),
+  listings: (q: { company_id?: string; ticker?: string; mic?: string } & Paging = {}) =>
+    request<Page_ListingOut_>("GET", "/listings", { query: { ...q } }),
+  listing: (listingId: string) => request<ListingOut>("GET", `/listings/${id(listingId)}`),
+  /** 409 ambiguous_series when several providers / close bases exist and none was chosen. */
+  prices: (
+    listingId: string,
+    q: { provider?: string; close_basis?: string; revisions?: "latest" | "all"; sort?: "date" | "-date" } & DateRange &
+      Paging = {},
+  ) => request<Page_PriceOut_>("GET", `/listings/${id(listingId)}/prices`, { query: { ...q } }),
+  corporateActions: (listingId: string, q: { kind?: string; provider?: string } & DateRange & Paging = {}) =>
+    request<Page_CorporateActionOut_>("GET", `/listings/${id(listingId)}/corporate-actions`, {
+      query: { ...q },
+    }),
+  referenceDatasets: (q: { kind?: string; current_only?: boolean } & Paging = {}) =>
+    request<Page_ReferenceDatasetOut_>("GET", "/reference/datasets", { query: { ...q } }),
+  referenceDataset: (datasetId: string) =>
+    request<ReferenceDatasetDetailOut>("GET", `/reference/datasets/${id(datasetId)}`),
+  referenceRecords: (datasetId: string, q: { record_key?: string } & Paging = {}) =>
+    request<Page_ReferenceRecordOut_>("GET", `/reference/datasets/${id(datasetId)}/records`, {
+      query: { ...q },
+    }),
 
   // ---------------------------------------------------------------- workflow actions (POST)
   buildDataset: (companyId: string, body: BuildRequest, key: string) =>
@@ -131,6 +182,21 @@ export const api = {
       `/datasets/${id(datasetId)}/conflicts/${id(conflictKey)}/resolutions`,
       { json: body, idempotencyKey: key },
     ),
+  confirmClassification: (companyId: string, body: ConfirmClassificationRequest, key: string) =>
+    request<ActionOut>("POST", `/companies/${id(companyId)}/classification/confirm`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  /** Read-only check: runs on a READ ONLY session, never stores, not action-logged. */
+  validateListing: (body: ListingRequest) =>
+    request<ListingCheck>("POST", "/listings/validate", { json: body }),
+  registerListing: (body: ListingRequest, key: string) =>
+    request<ActionOut>("POST", "/listings", { json: body, idempotencyKey: key }),
+  declareTradingCurrency: (listingId: string, body: CurrencyRequest, key: string) =>
+    request<ActionOut>("POST", `/listings/${id(listingId)}/trading-currency`, {
+      json: body,
+      idempotencyKey: key,
+    }),
 
   /** Read-only preview: runs on a READ ONLY session, never stores, not action-logged. */
   previewImport: (p: PreviewParams, file: Blob) =>

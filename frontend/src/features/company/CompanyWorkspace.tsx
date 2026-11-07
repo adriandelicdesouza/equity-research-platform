@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/endpoints";
 import { ErrorMessage, Loading } from "../../components/ui";
 import { href, type Route } from "../../lib/router";
+import { ClassificationTab } from "../classification/ClassificationTab";
 import { ConflictsTab } from "../conflicts/ConflictsTab";
 import { DatasetsTab } from "../workflow/DatasetsTab";
 import { FinancialsTab } from "../financials/FinancialsTab";
@@ -12,6 +13,7 @@ export const TABS = [
   { key: "financials", label: "Financial statements" },
   { key: "conflicts", label: "Conflicts" },
   { key: "datasets", label: "Datasets & workflow" },
+  { key: "classification", label: "Classification" },
 ] as const;
 
 export function CompanyWorkspace({
@@ -65,6 +67,8 @@ export function CompanyWorkspace({
         <ConflictsTab company={c} route={route} />
       ) : tab === "datasets" ? (
         <DatasetsTab company={c} route={route} />
+      ) : tab === "classification" ? (
+        <ClassificationTab company={c} route={route} />
       ) : (
         <OverviewTab company={c} route={route} />
       )}

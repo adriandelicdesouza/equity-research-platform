@@ -286,3 +286,31 @@ export function GuardedButton({
     </span>
   );
 }
+
+/** Cancel + confirm buttons of a confirmation dialog. */
+export function DialogButtons({
+  pending,
+  label,
+  danger,
+  disabled,
+  onCancel,
+  onConfirm,
+}: {
+  pending: boolean;
+  label: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="form-actions">
+      <button type="button" className="secondary" onClick={onCancel}>
+        Cancel
+      </button>
+      <button type="button" className={danger ? "danger" : undefined} disabled={pending || disabled} onClick={onConfirm}>
+        {pending ? "Working…" : label}
+      </button>
+    </div>
+  );
+}
