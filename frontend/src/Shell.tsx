@@ -6,11 +6,14 @@ import { ImportsPage } from "./features/imports/ImportsPage";
 import { RatesPage } from "./features/rates/RatesPage";
 import { ReferencePage } from "./features/reference/ReferencePage";
 import { SystemPage } from "./features/system/SystemPage";
+import { ProjectPage } from "./features/valuation/ProjectPage";
+import { ProjectsPage } from "./features/valuation/ProjectsPage";
 import { href, useRoute } from "./lib/router";
 import { useSession } from "./session";
 
 const NAV = [
   { key: "companies", label: "Companies" },
+  { key: "valuations", label: "Valuations" },
   { key: "listings", label: "Listings" },
   { key: "imports", label: "Imports" },
   { key: "reference", label: "Reference data" },
@@ -26,6 +29,9 @@ export function Shell({ onLogout }: { onLogout: () => void }) {
 
   let page;
   if (section === "companies" && rest[0]) page = <CompanyWorkspace companyId={rest[0]} tab={rest[1] ?? "overview"} route={route} />;
+  else if (section === "valuations" && rest[0])
+    page = <ProjectPage projectId={rest[0]} tab={rest[1] ?? "overview"} rest={rest.slice(2)} route={route} />;
+  else if (section === "valuations") page = <ProjectsPage route={route} />;
   else if (section === "listings") page = <ListingsPage route={route} />;
   else if (section === "imports") page = <ImportsPage route={route} />;
   else if (section === "rates") page = <RatesPage route={route} />;

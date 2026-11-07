@@ -10,17 +10,25 @@ export interface ValidationDetail {
   msg: string;
 }
 
+/** Valuation refusals (409) list the affected inputs, keys, checks or acknowledgements. */
+export type RefusalDetail = Record<string, unknown>;
+export type ErrorDetail = ValidationDetail | RefusalDetail;
+
+export function isValidationDetail(d: ErrorDetail): d is ValidationDetail {
+  return Array.isArray((d as ValidationDetail).loc) && typeof (d as ValidationDetail).msg === "string";
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  readonly details: ValidationDetail[];
+  readonly details: ErrorDetail[];
   /** Set when the backend recorded the refusal in the action log (409 etc.). */
   readonly actionId: string | null;
   constructor(
     status: number,
     code: string,
     message: string,
-    details: ValidationDetail[] = [],
+    details: ErrorDetail[] = [],
     actionId: string | null = null,
   ) {
     super(message);
@@ -65,7 +73,7 @@ interface ErrorEnvelope {
   error?: {
     code?: string;
     message?: string;
-    details?: ValidationDetail[];
+    details?: ErrorDetail[];
     action_id?: string;
   };
 }

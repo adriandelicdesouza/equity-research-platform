@@ -4,7 +4,7 @@ import {
   useId,
   useRef,
 } from "react";
-import { ApiError } from "../api/client";
+import { ApiError, isValidationDetail, type ErrorDetail } from "../api/client";
 import { href } from "../lib/router";
 
 // ------------------------------------------------------------------ status/loading/empty
@@ -19,6 +19,51 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="empty muted">{children}</p>;
+}
+
+/** Titles for valuation refusals (409 codes, docs/operations/valuation-api.md). */
+export const VALUATION_REFUSALS: Record<string, string> = {
+  dataset_not_locked: "The dataset is a draft — saved runs need a locked dataset",
+  dataset_mismatch: "Not the project's pinned dataset",
+  dataset_hash_mismatch: "The dataset changed since you loaded it",
+  dataset_discarded: "The pinned dataset was discarded",
+  assumption_not_approved: "Unapproved assumptions",
+  input_missing: "Inputs are missing",
+  input_ambiguous: "An input is ambiguous in the dataset",
+  input_lookahead: "An input is dated after the valuation date",
+  input_superseded: "An input has a newer revision",
+  input_stale: "An input is stale",
+  currency_mismatch: "Currency mismatch",
+  classification_unconfirmed: "The financial classification is not confirmed",
+  classification_blocked: "This methodology is not permitted for the company's classification",
+  acknowledgement_required: "A warning must be acknowledged with a reason",
+  invalid_acknowledgement: "Unexpected acknowledgement",
+  checks_failed: "Dataset checks failed for the period used",
+  invalid_check_override: "Unexpected check override",
+  invalid_override: "Invalid input override",
+  reason_required: "A reason is required",
+  revision_conflict: "Changed since you loaded it — reload and retry",
+  engine_refused: "The calculation engine refused the inputs",
+  validation_blocked: "Validation blocks saving this run",
+  source_mismatch: "The value differs from its source",
+  out_of_range: "Value out of range",
+  project_archived: "The project is archived",
+  lease_treatment_not_supported: "Lease treatment not supported in Phase 5",
+  unsupported_capital_structure: "Capital structure not supported",
+};
+
+/** One refusal detail in words: the affected input/key/check and its message. */
+export function describeDetail(d: ErrorDetail): string {
+  if (isValidationDetail(d)) {
+    return `${d.loc.filter((x) => x !== "body" && x !== "query").join(".") || "request"}: ${d.msg}`;
+  }
+  const subject = [d.input ?? d.key, d.line_item, d.check_code, d.ack, d.engine_code]
+    .filter((x) => x !== undefined && x !== null && x !== "")
+    .map(String)
+    .join(" / ");
+  const period = typeof d.period_index === "number" ? ` [year ${d.period_index}]` : "";
+  const message = typeof d.message === "string" ? d.message : "";
+  return `${subject}${period}${subject && message ? ": " : ""}${message}` || JSON.stringify(d);
 }
 
 /** What an error means for the user, by HTTP status and backend error code. */
@@ -40,6 +85,13 @@ export function explainError(err: unknown): { title: string; message: string } {
           title: "Awaiting owner approval",
           message: `${err.message} No role holds this permission until the owner decides (P15).`,
         };
+      if (err.code === "not_owner")
+        return {
+          title: "Only the project owner may change this project",
+          message: `${err.message} Administrators can act with a recorded reason.`,
+        };
+      if (err.code === "admin_reason_required")
+        return { title: "A reason is required", message: err.message };
       if (err.code === "csrf_failed" || err.code === "origin_rejected")
         return {
           title: "Security check failed",
@@ -54,6 +106,8 @@ export function explainError(err: unknown): { title: string; message: string } {
           title: "Choose a series",
           message: `${err.message} Choose one in the filters above.`,
         };
+      if (err.code in VALUATION_REFUSALS)
+        return { title: VALUATION_REFUSALS[err.code] ?? "Refused", message: err.message };
       return { title: "Refused by a business rule", message: err.message };
     case 413:
       return { title: "File too large", message: err.message };
@@ -76,10 +130,7 @@ export function ErrorMessage({ error }: { error: unknown }) {
       {details.length > 0 && (
         <ul className="details">
           {details.map((d, i) => (
-            <li key={i}>
-              <code>{d.loc.filter((x) => x !== "body" && x !== "query").join(".") || "request"}</code>
-              : {d.msg}
-            </li>
+            <li key={i}>{describeDetail(d)}</li>
           ))}
         </ul>
       )}

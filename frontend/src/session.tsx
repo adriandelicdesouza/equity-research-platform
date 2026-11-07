@@ -11,6 +11,8 @@ export const PERM = {
   lock: "dataset:lock",
   importData: "data:import",
   userManage: "user:manage",
+  valuationRead: "valuation:read",
+  valuationWrite: "valuation:write",
 } as const;
 
 /**

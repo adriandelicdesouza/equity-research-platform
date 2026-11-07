@@ -6,6 +6,7 @@ import { ClassificationTab } from "../classification/ClassificationTab";
 import { ConflictsTab } from "../conflicts/ConflictsTab";
 import { DatasetsTab } from "../workflow/DatasetsTab";
 import { FinancialsTab } from "../financials/FinancialsTab";
+import { ProjectsPage } from "../valuation/ProjectsPage";
 import { OverviewTab } from "./OverviewTab";
 
 export const TABS = [
@@ -14,6 +15,7 @@ export const TABS = [
   { key: "conflicts", label: "Conflicts" },
   { key: "datasets", label: "Datasets & workflow" },
   { key: "classification", label: "Classification" },
+  { key: "valuation", label: "Valuation" },
 ] as const;
 
 export function CompanyWorkspace({
@@ -69,6 +71,8 @@ export function CompanyWorkspace({
         <DatasetsTab company={c} route={route} />
       ) : tab === "classification" ? (
         <ClassificationTab company={c} route={route} />
+      ) : tab === "valuation" ? (
+        <ProjectsPage company={c} route={route} />
       ) : (
         <OverviewTab company={c} route={route} />
       )}

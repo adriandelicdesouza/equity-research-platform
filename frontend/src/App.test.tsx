@@ -51,6 +51,14 @@ describe("App", () => {
     expect(await screen.findByText("No rate series is registered for these filters.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Rates & FX" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("routes the valuation projects section", async () => {
+    mockFetch({ "GET /api/auth/me": makeMe("reviewer"), "GET /api/valuation/projects": page([]) });
+    setHash("#/valuations");
+    renderApp();
+    expect(await screen.findByText("No valuation projects yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Valuations" })).toHaveAttribute("aria-current", "page");
+  });
 });
 
 describe("Session permissions", () => {
