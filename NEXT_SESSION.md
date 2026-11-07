@@ -8,7 +8,7 @@
 
 ## Verified state (2026-11-07)
 
-- **Branch `m2-ingestion`.** M3 phase 3 is five commits on top of `c190e87`. It was pushed fast-forward to `origin/m2-ingestion` at the end of Session 9; see `SESSION_LOG.md` for the pushed HEAD.
+- **Branch `m2-ingestion`.** M3 phase 3 is seven commits on top of `c190e87`. It was pushed fast-forward to `origin/m2-ingestion` at the end of Session 9; see `SESSION_LOG.md` for the pushed HEAD.
 - **Uncommitted owner edit:** `CLAUDE.md` gained a "Session Continuity and Context Discipline" section during Session 9. It was deliberately left out of the milestone commits; the owner should commit it, or confirm that it should be committed.
 - **`main`** = `9ef5594` (M0 + M1). A future merge conflicts on `README.md`: keep the `m2-ingestion` version.
 - **Dev stack:** stopped at the end of the session. Dev DB at Alembic **`0016`**; `audit.api_actions` empty; SEC data unchanged (6 companies); open material conflicts AAPL 6, MSFT 6, RY 5. All 7 providers disabled; no live provider request has been made.
@@ -49,7 +49,7 @@ Ask the owner for P15 before either.
 
   No synthetic data goes in the dev DB: tests use `erp_test`, and frontend tests mock `fetch`.
 - Before each commit, check the staged diff against the `FORBIDDEN` patterns in the backup `sanitize.py` (path in local Claude memory, D48).
-- After a backend schema change, run `make api-types` (a backend test fails if the types are stale).
+- After a backend schema change, run `make api-types`. Before pushing, `git ls-files -o -i --exclude-standard` must list no source files (the `datasets/` data rule once hid UI code).
 
 ## Start-up
 
