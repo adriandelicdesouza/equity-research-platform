@@ -196,3 +196,30 @@ class RunDecision(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class SensitivityRun(Base):
+    """One immutable sensitivity grid over a stored run (Phase 5b; migration 0018)."""
+
+    __tablename__ = "sensitivity_runs"
+    __table_args__ = _VAL
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("val.valuation_runs.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("val.valuation_projects.id"))
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    config_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    base: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    cells: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    cell_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    refused_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(120))
+    action_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("auth.users.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

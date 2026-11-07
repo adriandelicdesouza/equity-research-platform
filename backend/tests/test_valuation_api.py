@@ -3,6 +3,7 @@ refusal envelopes, ownership, idempotency and reproduction."""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ ADMIN_REASON = "Owner unavailable; preparing the committee pack."
 
 def test_every_valuation_route_requires_the_valuation_permissions() -> None:
     routes = [r for r in _api_routes(create_app().routes) if r.path.startswith("/valuation")]
-    assert len(routes) == 24
+    assert len(routes) == 34
     for route in routes:
         [policy] = _policies(route.dependant)
         read_only = route.methods == {"GET"} or route.path.endswith("/reproduce")
@@ -225,3 +226,108 @@ def test_ownership_and_admin_override(wf_client: TestClient, db: Session, tmp_pa
     assert r.json()["result"]["status"] == "archived"
     mine = wf_client.get(f"{V}/projects", params={"owner": "me"}).json()
     assert mine["total"] == 0  # the admin owns none
+
+
+def test_scenarios_probabilities_and_sensitivities_over_http(
+    wf_client: TestClient, db: Session, tmp_path: Path
+) -> None:
+    """Phase 5b over HTTP: a bull scenario inheriting from base, probabilities, the weighted
+    summary, a two-way grid with refused cells, idempotency and reviewer read-only access."""
+    fx = setup(db, tmp_path)
+    ana = as_role(wf_client, db, "andy", ["analyst"])
+    project = _project(ana, fx)
+    pid = project["id"]
+    [base] = wf_client.get(f"{V}/projects/{pid}/scenarios").json()
+    assert _assume(ana, base["id"], 0, b1_assumptions()).status_code == 200
+    base["revision_no"] = 1
+    r = ana.post(
+        f"{V}/projects/{pid}/scenarios",
+        json={"name": "Bull", "kind": "bull", "parent_scenario_id": base["id"]},
+    )
+    assert r.status_code == 201, r.text
+    bull = r.json()["result"]
+    assert (bull["kind"], bull["parent_scenario_id"], bull["revision_no"]) == (
+        "bull",
+        base["id"],
+        0,
+    )
+    state = wf_client.get(f"{V}/scenarios/{bull['id']}/assumptions").json()
+    assert state["missing_required"] == [] and state["resolved"] is True
+    assert {i["inherited_from"] for i in state["items"]} == {base["id"]}
+    own = wf_client.get(
+        f"{V}/scenarios/{bull['id']}/assumptions", params={"resolved": "false"}
+    ).json()
+    assert own["items"] == []
+    changes = [{"key": "ebit_margin", "period_index": k, "value": "0.25"} for k in (1, 2, 3)]
+    assert _assume(ana, bull["id"], 0, changes).status_code == 200
+    bull["revision_no"] = 1
+    for s in (base, bull):
+        created = ana.post(f"{V}/projects/{pid}/runs", json=_run_body(fx, s))
+        assert created.status_code == 201, created.text
+        s["run"] = created.json()["result"]["run"]
+    detail = wf_client.get(f"{V}/projects/{pid}").json()
+    bad = ana.post(
+        f"{V}/projects/{pid}/probabilities",
+        json={"expected_revision": detail["revision_no"], "weights": {base["id"]: "0.5"}},
+    )
+    assert (bad.status_code, bad.json()["error"]["code"]) == (409, "weights_not_one")
+    ok = ana.post(
+        f"{V}/projects/{pid}/probabilities",
+        json={
+            "expected_revision": detail["revision_no"],
+            "weights": {base["id"]: "0.6", bull["id"]: "0.4"},
+        },
+    )
+    assert ok.status_code == 200, ok.text
+    summary = wf_client.get(f"{V}/projects/{pid}/scenario-summary").json()
+    assert summary["complete"] is True and summary["issues"] == []
+    assert summary["probabilities_sum"] == "1.0"
+    lo, hi = (Decimal(base["run"]["per_share_value"]), Decimal(bull["run"]["per_share_value"]))
+    assert lo < Decimal(summary["weighted_per_share"]) < hi
+    body = {
+        "kind": "two_way",
+        "metric": "per_share",
+        "x": {"variable": "wacc", "values": ["0.09", "0.10", "0.11"]},
+        "y": {"variable": "terminal_g", "values": ["0.02", "0.10"]},
+        "label": "WACC × g",
+    }
+    run_id = base["run"]["id"]
+    made = ana.post(f"{V}/runs/{run_id}/sensitivities", json=body)
+    assert made.status_code == 201, made.text
+    grid = made.json()["result"]["sensitivity"]
+    assert (grid["cell_count"], grid["refused_count"], grid["label"]) == (6, 2, "WACC × g")
+    center = next(c for c in grid["cells"] if (c["x"], c["y"]) == ("0.10", "0.02"))
+    assert center["value"] == base["run"]["per_share_value"]
+    again = ana.post(f"{V}/runs/{run_id}/sensitivities", json=body)
+    assert (again.status_code, again.json()["result"]["existing"]) == (200, True)
+    listed = wf_client.get(f"{V}/runs/{run_id}/sensitivities").json()
+    assert listed["total"] == 1 and listed["items"][0]["id"] == grid["id"]
+    assert wf_client.get(f"{V}/sensitivities/{grid['id']}").json()["cells"] == grid["cells"]
+    big = {
+        **body,
+        "x": {"variable": "wacc", "values": [f"0.{i:02d}" for i in range(5, 16)]},
+        "y": {"variable": "terminal_g", "values": [f"0.00{i}" for i in range(10)]},
+    }
+    too = ana.post(f"{V}/runs/{run_id}/sensitivities", json=big)
+    assert (too.status_code, too.json()["error"]["code"]) == (409, "grid_too_large")
+    exact = {
+        **body,
+        "kind": "one_way",
+        "y": None,
+        "x": {"variable": "wacc", "values": ["0.1000000000000000000000000001"]},
+    }
+    assert ana.post(f"{V}/runs/{run_id}/sensitivities", json=exact).status_code == 201
+    variables = wf_client.get(f"{V}/sensitivity-variables").json()
+    assert {v["variable"] for v in variables} >= {"wacc", "terminal_g", "exit_multiple"}
+    archive = ana.post(
+        f"{V}/scenarios/{bull['id']}/archive",
+        json={"expected_revision": bull["revision_no"], "reason": "Folded into the base case."},
+    )
+    assert (archive.status_code, archive.json()["error"]["code"]) == (409, "scenario_weighted")
+    rev = as_role(wf_client, db, "rita", ["reviewer"])
+    for path, payload in (
+        (f"{V}/runs/{run_id}/sensitivities", body),
+        (f"{V}/projects/{pid}/scenarios", {"name": "Bear", "kind": "bear"}),
+    ):
+        denied = rev.post(path, json=payload)
+        assert (denied.status_code, denied.json()["error"]["code"]) == (403, "forbidden")

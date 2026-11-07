@@ -1,4 +1,4 @@
-"""Valuation schema (migration 0017): blocks, immutability, grants, constraints, triggers."""
+"""Valuation schema (migrations 0017, 0018): blocks, immutability, grants, constraints, triggers."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ APPEND_ONLY = (
     "val.run_traces",
     "val.run_inputs",
     "val.run_decisions",
+    "val.sensitivity_runs",
 )
 
 

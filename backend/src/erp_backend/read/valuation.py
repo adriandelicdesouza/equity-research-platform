@@ -35,6 +35,7 @@ from erp_backend.models import (
     RunTrace,
     Scenario,
     Security,
+    SensitivityRun,
     User,
     ValuationBlock,
     ValuationProject,
@@ -88,6 +89,9 @@ class ScenarioOut(BaseModel):
     parent_scenario_id: uuid.UUID | None
     revision_no: int
     status: str
+    probability: Decimal | None = None
+    sort_order: int = 0
+    updated_at: datetime | None = None
 
 
 class RunSummaryOut(BaseModel):
@@ -138,6 +142,9 @@ class AssumptionItemOut(BaseModel):
     scenario_revision_no: int
     created_by: uuid.UUID
     created_at: datetime
+    inherited_from: uuid.UUID | None = Field(
+        None, description="Ancestor scenario the value is inherited from (resolved state)"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -151,6 +158,7 @@ class AssumptionStateOut(BaseModel):
     scenario_id: uuid.UUID
     scenario_revision: int
     methodology: str
+    resolved: bool = True
     items: list[AssumptionItemOut]
     missing_required: list[RequiredKeyOut]
     unapproved: list[RequiredKeyOut]
@@ -418,12 +426,17 @@ def _scenario_out(s: Scenario) -> ScenarioOut:
         parent_scenario_id=s.parent_scenario_id,
         revision_no=s.revision_no,
         status=s.status,
+        probability=s.probability,
+        sort_order=s.sort_order,
+        updated_at=s.updated_at,
     )
 
 
 def scenarios(db: Session, project_id: uuid.UUID) -> list[ScenarioOut]:
     rows = db.scalars(
-        select(Scenario).where(Scenario.project_id == project_id).order_by(Scenario.sort_order)
+        select(Scenario)
+        .where(Scenario.project_id == project_id)
+        .order_by(Scenario.sort_order, Scenario.created_at)
     )
     return [_scenario_out(s) for s in rows]
 
@@ -500,7 +513,7 @@ def project_detail(db: Session, project_id: uuid.UUID) -> ProjectDetailOut:
 # --------------------------------------------------------------------------- assumptions
 
 
-def _item_out(r: AssumptionRevision) -> AssumptionItemOut:
+def _item_out(r: AssumptionRevision, inherited_from: uuid.UUID | None = None) -> AssumptionItemOut:
     return AssumptionItemOut(
         key=r.key,
         period_index=r.period_index,
@@ -515,6 +528,7 @@ def _item_out(r: AssumptionRevision) -> AssumptionItemOut:
         scenario_revision_no=r.scenario_revision_no,
         created_by=r.created_by,
         created_at=r.created_at,
+        inherited_from=inherited_from,
     )
 
 
@@ -525,12 +539,16 @@ def scenario_or_404(db: Session, scenario_id: uuid.UUID) -> Scenario:
     return s
 
 
-def assumption_state(db: Session, scenario_id: uuid.UUID, methodology: str) -> AssumptionStateOut:
+def assumption_state(
+    db: Session, scenario_id: uuid.UUID, methodology: str, resolved: bool = True
+) -> AssumptionStateOut:
+    """Current values; with ``resolved`` (default) inherited values are applied, as a run
+    would use them, and marked with ``inherited_from``."""
     scenario = scenario_or_404(db, scenario_id)
     project = get_project(db, scenario.project_id)
     company = db.get(Company, project.company_id)
     assert company is not None
-    state = asm.current_state(db, scenario)
+    state = asm.resolved_state(db, scenario) if resolved else asm.current_state(db, scenario)
     cls = effective_classification(company)
     row = db.scalars(
         select(ValuationBlock).where(
@@ -553,7 +571,8 @@ def assumption_state(db: Session, scenario_id: uuid.UUID, methodology: str) -> A
         scenario_id=scenario.id,
         scenario_revision=scenario.revision_no,
         methodology=methodology,
-        items=[_item_out(c.row) for c in state.items.values()],
+        resolved=resolved,
+        items=[_item_out(c.row, c.inherited_from) for c in state.items.values()],
         missing_required=missing,
         unapproved=unapproved,
     )
@@ -973,4 +992,198 @@ def run_trace(db: Session, run_id: uuid.UUID, node: str | None, depth: int) -> T
             truncated = True
     return TraceOut(
         run_id=run.id, trace_sha256=trace.trace_sha256, root=node, nodes=picked, truncated=truncated
+    )
+
+
+# --------------------------------------------------------------------------- scenario summary
+
+
+class ScenarioValueOut(BaseModel):
+    scenario: ScenarioOut
+    run: RunSummaryOut | None = Field(
+        description="The scenario's latest saved run of the methodology, if any"
+    )
+
+
+class ScenarioSummaryOut(BaseModel):
+    """Per-scenario values and, when complete, the probability-weighted value (MASTER_BRIEF
+    §14.1). Weighted only when every weighted scenario has a run of the methodology with the
+    same valuation date, currency and dataset; otherwise ``issues`` explain why not."""
+
+    project_id: uuid.UUID
+    methodology: str
+    scenarios: list[ScenarioValueOut]
+    probabilities_sum: Decimal | None
+    weighted_per_share: Decimal | None
+    weighted_primary_value: Decimal | None
+    per_share_low: Decimal | None
+    per_share_high: Decimal | None
+    complete: bool
+    issues: list[str]
+
+
+def scenario_summary(db: Session, project_id: uuid.UUID, methodology: str) -> ScenarioSummaryOut:
+    project = get_project(db, project_id)
+    rows = db.scalars(
+        select(Scenario)
+        .where(Scenario.project_id == project.id, Scenario.status == "active")
+        .order_by(Scenario.sort_order, Scenario.created_at)
+    ).all()
+    latest: dict[uuid.UUID, ValuationRun] = {}
+    for s in rows:
+        run = db.scalars(
+            select(ValuationRun)
+            .where(ValuationRun.scenario_id == s.id, ValuationRun.methodology == methodology)
+            .order_by(ValuationRun.created_at.desc(), ValuationRun.id)
+            .limit(1)
+        ).first()
+        if run is not None:
+            latest[s.id] = run
+    summaries = {
+        r.id: s
+        for r, s in zip(latest.values(), _run_summaries(db, list(latest.values())), strict=True)
+    }
+    items = [
+        ScenarioValueOut(
+            scenario=_scenario_out(s),
+            run=summaries[latest[s.id].id] if s.id in latest else None,
+        )
+        for s in rows
+    ]
+    issues: list[str] = []
+    weighted = [s for s in rows if s.probability is not None]
+    total = sum((s.probability for s in weighted if s.probability is not None), Decimal(0))
+    if not weighted:
+        issues.append("No scenario probabilities are set.")
+    for s in weighted:
+        if s.id not in latest:
+            issues.append(f"Scenario {s.name!r} has a probability but no {methodology} run.")
+    runs = [latest[s.id] for s in weighted if s.id in latest]
+    for attr, label in (
+        ("valuation_date", "valuation dates"),
+        ("currency", "currencies"),
+        ("dataset_id", "datasets"),
+    ):
+        if len({getattr(r, attr) for r in runs}) > 1:
+            issues.append(f"The weighted scenarios' runs use different {label}.")
+    per_share = [r.per_share_value for r in latest.values()]
+    w_ps = w_pv = None
+    if weighted and not issues:
+        with localcontext(make_context()):
+            w_ps = sum(
+                (
+                    s.probability * latest[s.id].per_share_value
+                    for s in weighted
+                    if s.probability is not None
+                ),
+                Decimal(0),
+            )
+            w_pv = sum(
+                (
+                    s.probability * latest[s.id].primary_value
+                    for s in weighted
+                    if s.probability is not None
+                ),
+                Decimal(0),
+            )
+    return ScenarioSummaryOut(
+        project_id=project.id,
+        methodology=methodology,
+        scenarios=items,
+        probabilities_sum=total if weighted else None,
+        weighted_per_share=w_ps,
+        weighted_primary_value=w_pv,
+        per_share_low=min(per_share) if per_share else None,
+        per_share_high=max(per_share) if per_share else None,
+        complete=bool(weighted) and not issues,
+        issues=issues,
+    )
+
+
+def scenarios_by_id(db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, ScenarioOut]:
+    return {s.id: s for s in scenarios(db, project_id)}
+
+
+# --------------------------------------------------------------------------- sensitivities
+
+
+class SensitivitySummaryOut(BaseModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    project_id: uuid.UUID
+    kind: str
+    metric: str
+    label: str | None
+    config: dict[str, Any]
+    cell_count: int
+    refused_count: int
+    result_sha256: str
+    engine_version: str
+    created_by: UserRef
+    created_at: datetime
+
+
+class SensitivityOut(SensitivitySummaryOut):
+    config_sha256: str
+    base: dict[str, Any] = Field(description="The run's own value of the metric and variables")
+    cells: list[dict[str, Any]] = Field(
+        description="Coordinates with value (decimal string) or refused_code and message"
+    )
+
+
+class SensitivityVariableOut(BaseModel):
+    variable: str
+    label: str
+    low: Decimal
+    high: Decimal
+    shift: bool
+    methodologies: list[str]
+
+
+def _sensitivity_summary(row: SensitivityRun, user: UserRef) -> SensitivitySummaryOut:
+    return SensitivitySummaryOut(
+        id=row.id,
+        run_id=row.run_id,
+        project_id=row.project_id,
+        kind=row.kind,
+        metric=row.metric,
+        label=row.label,
+        config=row.config,
+        cell_count=row.cell_count,
+        refused_count=row.refused_count,
+        result_sha256=row.result_sha256,
+        engine_version=row.engine_version,
+        created_by=user,
+        created_at=row.created_at,
+    )
+
+
+def list_sensitivities(
+    db: Session, run_id: uuid.UUID, limit: int, offset: int
+) -> Page[SensitivitySummaryOut]:
+    run_or_404(db, run_id)
+    stmt = (
+        select(SensitivityRun)
+        .where(SensitivityRun.run_id == run_id)
+        .order_by(SensitivityRun.created_at.desc(), SensitivityRun.id)
+    )
+
+    def convert(rows: Any) -> list[SensitivitySummaryOut]:
+        rows = list(rows)
+        users = _users(db, {r.created_by for r in rows})
+        return [_sensitivity_summary(r, users[r.created_by]) for r in rows]
+
+    return paginate(db, stmt, limit, offset, convert)
+
+
+def sensitivity_detail(db: Session, sensitivity_id: uuid.UUID) -> SensitivityOut:
+    row = db.get(SensitivityRun, sensitivity_id)
+    if row is None:
+        raise ApiError(404, "not_found", f"No sensitivity {sensitivity_id}.")
+    user = _users(db, {row.created_by})[row.created_by]
+    return SensitivityOut(
+        **_sensitivity_summary(row, user).model_dump(),
+        config_sha256=row.config_sha256,
+        base=row.base,
+        cells=row.cells,
     )

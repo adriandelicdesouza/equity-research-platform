@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -35,6 +36,8 @@ from erp_backend.readonly import read_only_db
 from erp_backend.valuation import assumptions as asm
 from erp_backend.valuation import projects as svc
 from erp_backend.valuation import runs as run_svc
+from erp_backend.valuation import scenarios as scn
+from erp_backend.valuation import sensitivity as sens
 from erp_backend.valuation.common import Actor
 from erp_backend.valuation.resolver import (
     Acknowledgement,
@@ -97,6 +100,86 @@ class OwnerRequest(_Body):
     expected_revision: int
     user_id: uuid.UUID
     reason: Reason
+
+
+SensDecimal = Annotated[str, Field(pattern=r"^-?\d{1,6}(\.\d{1,30})?$")]
+SensVariable = Literal[
+    "wacc",
+    "cost_of_equity",
+    "terminal_g",
+    "exit_multiple",
+    "revenue_growth_shift",
+    "ebit_margin_shift",
+    "capex_pct_shift",
+]
+
+
+class AxisIn(_Body):
+    variable: SensVariable
+    values: Annotated[list[SensDecimal], Field(min_length=1, max_length=25)]
+
+
+class TornadoIn(_Body):
+    variable: SensVariable
+    low: SensDecimal
+    high: SensDecimal
+
+
+class SensitivityRequestIn(_Body):
+    kind: Literal["one_way", "two_way", "tornado"]
+    metric: Literal["per_share", "equity_value", "enterprise_value"] = "per_share"
+    x: AxisIn | None = None
+    y: AxisIn | None = None
+    tornado: Annotated[list[TornadoIn], Field(max_length=10)] = []
+    label: Annotated[str | None, Field(max_length=120)] = None
+    admin_reason: AdminReason = None
+
+    def to_request(self) -> sens.SensitivityRequest:
+        def axis(a: AxisIn | None) -> sens.Axis | None:
+            return None if a is None else sens.Axis(a.variable, tuple(Decimal(v) for v in a.values))
+
+        return sens.SensitivityRequest(
+            kind=self.kind,
+            metric=self.metric,
+            x=axis(self.x),
+            y=axis(self.y),
+            tornado=tuple(
+                sens.TornadoItem(t.variable, Decimal(t.low), Decimal(t.high)) for t in self.tornado
+            ),
+            label=self.label,
+        )
+
+
+class SensitivityCreatedOut(BaseModel):
+    existing: bool
+    sensitivity: rv.SensitivityOut
+
+
+class CreateScenarioRequest(_Body):
+    name: Annotated[str, Field(min_length=1, max_length=80)]
+    kind: Literal["bull", "bear", "custom"]
+    parent_scenario_id: uuid.UUID | None = None
+    admin_reason: AdminReason = None
+
+
+class ScenarioMetadataRequest(_Body):
+    expected_revision: int
+    name: Annotated[str | None, Field(min_length=1, max_length=80)] = None
+    sort_order: Annotated[int | None, Field(ge=0, le=1000)] = None
+    parent_scenario_id: uuid.UUID | None = None
+    clear_parent: bool = False
+    reason: Annotated[str | None, Field(max_length=2000)] = None
+    admin_reason: AdminReason = None
+
+
+class ProbabilitiesRequest(_Body):
+    expected_revision: int
+    weights: Annotated[
+        dict[uuid.UUID, Annotated[str, Field(pattern=r"^(0(\.\d+)?|1(\.0+)?)$")]],
+        Field(max_length=20),
+    ]
+    reason: Annotated[str | None, Field(max_length=2000)] = None
+    admin_reason: AdminReason = None
 
 
 class AnalystSource(_Body):
@@ -527,6 +610,178 @@ def list_scenarios(project_id: uuid.UUID, db: ReadDb, ctx: Reader) -> list[rv.Sc
     return rv.scenarios(db, project_id)
 
 
+def _scenario_action(
+    db: Session,
+    ctx: Any,
+    target: str,
+    action: str,
+    body: _Body,
+    key: str | None,
+    fn: Any,
+    status: int = 200,
+) -> JSONResponse:
+    def run() -> tuple[int, BaseModel]:
+        scenario = fn()
+        return status, rv.scenarios_by_id(db, scenario.project_id)[scenario.id]
+
+    return perform(
+        db,
+        ctx,
+        action=action,
+        request=body.model_dump(mode="json"),
+        idempotency_key=key,
+        target=target,
+        run=run,
+    )
+
+
+@router.post("/projects/{project_id}/scenarios", response_model=ActionOut, status_code=201)
+def create_scenario(
+    project_id: uuid.UUID,
+    body: CreateScenarioRequest,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Add a bull, bear or custom scenario, optionally inheriting from a parent (Phase 5b)."""
+    return _scenario_action(
+        db,
+        ctx,
+        str(project_id),
+        "valuation.scenario_create",
+        body,
+        idempotency_key,
+        lambda: scn.create_scenario(
+            db,
+            _actor(ctx),
+            project_id,
+            name=body.name,
+            kind=body.kind,
+            parent_scenario_id=body.parent_scenario_id,
+            admin_reason=body.admin_reason,
+        ),
+        status=201,
+    )
+
+
+@router.post("/scenarios/{scenario_id}/metadata", response_model=ActionOut)
+def update_scenario(
+    scenario_id: uuid.UUID,
+    body: ScenarioMetadataRequest,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Rename, reorder or re-parent a scenario (cycle-checked; bumps its revision)."""
+    changes: dict[str, Any] = {}
+    if body.name is not None:
+        changes["name"] = body.name
+    if body.sort_order is not None:
+        changes["sort_order"] = body.sort_order
+    if body.parent_scenario_id is not None or body.clear_parent:
+        changes["parent_scenario_id"] = None if body.clear_parent else body.parent_scenario_id
+    return _scenario_action(
+        db,
+        ctx,
+        str(scenario_id),
+        "valuation.scenario_update",
+        body,
+        idempotency_key,
+        lambda: scn.update_scenario(
+            db,
+            _actor(ctx),
+            scenario_id,
+            expected_revision=body.expected_revision,
+            changes=changes,
+            reason=body.reason,
+            admin_reason=body.admin_reason,
+        ),
+    )
+
+
+def _scenario_status(
+    scenario_id: uuid.UUID, body: StatusRequest, db: Session, ctx: Any, key: str | None, status: str
+) -> JSONResponse:
+    return _scenario_action(
+        db,
+        ctx,
+        str(scenario_id),
+        f"valuation.scenario_{'archive' if status == 'archived' else 'restore'}",
+        body,
+        key,
+        lambda: scn.set_scenario_status(
+            db,
+            _actor(ctx),
+            scenario_id,
+            expected_revision=body.expected_revision,
+            status=status,
+            reason=body.reason,
+            admin_reason=body.admin_reason,
+        ),
+    )
+
+
+@router.post("/scenarios/{scenario_id}/archive", response_model=ActionOut)
+def archive_scenario(
+    scenario_id: uuid.UUID,
+    body: StatusRequest,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Archive a non-base scenario without active children or probability (with reason)."""
+    return _scenario_status(scenario_id, body, db, ctx, idempotency_key, "archived")
+
+
+@router.post("/scenarios/{scenario_id}/restore", response_model=ActionOut)
+def restore_scenario(
+    scenario_id: uuid.UUID,
+    body: StatusRequest,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Restore an archived scenario (its parent must be active)."""
+    return _scenario_status(scenario_id, body, db, ctx, idempotency_key, "active")
+
+
+@router.post("/projects/{project_id}/probabilities", response_model=ActionOut)
+def set_probabilities(
+    project_id: uuid.UUID,
+    body: ProbabilitiesRequest,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Set scenario probabilities (named active scenarios, exact sum 1; others cleared)."""
+    return _project_action(
+        db,
+        ctx,
+        project_id,
+        "valuation.probabilities_set",
+        body,
+        idempotency_key,
+        lambda: scn.set_probabilities(
+            db,
+            _actor(ctx),
+            project_id,
+            expected_revision=body.expected_revision,
+            weights={k: Decimal(v) for k, v in body.weights.items()},
+            reason=body.reason,
+            admin_reason=body.admin_reason,
+        ),
+    )
+
+
+@router.get("/projects/{project_id}/scenario-summary", response_model=rv.ScenarioSummaryOut)
+def scenario_summary(
+    project_id: uuid.UUID, db: ReadDb, ctx: Reader, methodology: Methodology = "dcf_fcff"
+) -> rv.ScenarioSummaryOut:
+    """Each active scenario's latest run of ``methodology`` and, when complete, the
+    probability-weighted value (computed in Python, exact decimals)."""
+    return rv.scenario_summary(db, project_id, methodology)
+
+
 # --------------------------------------------------------------------------- assumptions
 
 
@@ -536,9 +791,11 @@ def assumption_state(
     db: ReadDb,
     ctx: Reader,
     methodology: Methodology = "dcf_fcff",
+    resolved: bool = True,
 ) -> rv.AssumptionStateOut:
-    """Current value per key, with the keys still missing or unapproved for ``methodology``."""
-    return rv.assumption_state(db, scenario_id, methodology)
+    """Current value per key, with the keys still missing or unapproved for ``methodology``.
+    ``resolved`` (default) applies inheritance; ``false`` shows the scenario's own values."""
+    return rv.assumption_state(db, scenario_id, methodology, resolved)
 
 
 @router.get(
@@ -766,3 +1023,66 @@ def reproduce_run(run_id: uuid.UUID, db: ReadDb, ctx: Reader) -> ReproductionOut
     run = rv.run_or_404(db, run_id)
     rep = run_svc.reproduce(run)
     return ReproductionOut(run_id=run.id, **rep.__dict__)
+
+
+# --------------------------------------------------------------------------- sensitivities
+
+
+@router.get("/sensitivity-variables", response_model=list[rv.SensitivityVariableOut])
+def sensitivity_variables(ctx: Reader) -> list[rv.SensitivityVariableOut]:
+    """Variable registry: allowed range, absolute or shift, methodologies."""
+    return [rv.SensitivityVariableOut(**v) for v in sens.variables()]
+
+
+@router.post("/runs/{run_id}/sensitivities", response_model=ActionOut, status_code=201)
+def create_sensitivity(
+    run_id: uuid.UUID,
+    body: SensitivityRequestIn,
+    db: DbSession,
+    ctx: Writer,
+    idempotency_key: IdempotencyKey = None,
+) -> JSONResponse:
+    """Compute a one-way, two-way (≤ 100 cells) or tornado grid over a stored run and store it
+    immutably (201), or return the identical stored result (200)."""
+    action_id = uuid.uuid4()
+
+    def run() -> tuple[int, BaseModel]:
+        row, existing = sens.create(
+            db,
+            _actor(ctx),
+            run_id,
+            body.to_request(),
+            admin_reason=body.admin_reason,
+            action_id=action_id,
+        )
+        out = SensitivityCreatedOut(
+            existing=existing, sensitivity=rv.sensitivity_detail(db, row.id)
+        )
+        return (200 if existing else 201), out
+
+    return perform(
+        db,
+        ctx,
+        action="valuation.sensitivity_create",
+        request=body.model_dump(mode="json"),
+        idempotency_key=idempotency_key,
+        target=str(run_id),
+        run=run,
+        action_id=action_id,
+    )
+
+
+@router.get("/runs/{run_id}/sensitivities", response_model=Page[rv.SensitivitySummaryOut])
+def list_sensitivities(
+    run_id: uuid.UUID,
+    db: ReadDb,
+    ctx: Reader,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Page[rv.SensitivitySummaryOut]:
+    return rv.list_sensitivities(db, run_id, limit, offset)
+
+
+@router.get("/sensitivities/{sensitivity_id}", response_model=rv.SensitivityOut)
+def get_sensitivity(sensitivity_id: uuid.UUID, db: ReadDb, ctx: Reader) -> rv.SensitivityOut:
+    return rv.sensitivity_detail(db, sensitivity_id)

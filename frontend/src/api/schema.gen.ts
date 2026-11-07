@@ -57,15 +57,22 @@ export interface AssumptionItemOut {
   scenario_revision_no: number;
   created_by: string;
   created_at: string;
+  inherited_from?: string | null;
 }
 
 export interface AssumptionStateOut {
   scenario_id: string;
   scenario_revision: number;
   methodology: string;
+  resolved?: boolean;
   items: AssumptionItemOut[];
   missing_required: RequiredKeyOut[];
   unapproved: RequiredKeyOut[];
+}
+
+export interface AxisIn {
+  variable: "wacc" | "cost_of_equity" | "terminal_g" | "exit_multiple" | "revenue_growth_shift" | "ebit_margin_shift" | "capex_pct_shift";
+  values: string[];
 }
 
 export interface BlockOut {
@@ -256,6 +263,13 @@ export interface CreateRunRequest {
   check_overrides?: CheckOverrideIn[];
   admin_reason?: string | null;
   label?: string | null;
+}
+
+export interface CreateScenarioRequest {
+  name: string;
+  kind: "bull" | "bear" | "custom";
+  parent_scenario_id?: string | null;
+  admin_reason?: string | null;
 }
 
 export interface CurrencyRequest {
@@ -725,6 +739,13 @@ export interface Page_RunSummaryOut_ {
   offset: number;
 }
 
+export interface Page_SensitivitySummaryOut_ {
+  items: SensitivitySummaryOut[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface PeriodCandidateOut {
   id: string;
   fiscal_year: number;
@@ -780,6 +801,13 @@ export interface PriceOut {
   provider_code: string;
   origin: OriginOut;
   revisions: number;
+}
+
+export interface ProbabilitiesRequest {
+  expected_revision: number;
+  weights: Record<string, string>;
+  reason?: string | null;
+  admin_reason?: string | null;
 }
 
 export interface ProjectDetailOut {
@@ -1127,6 +1155,16 @@ export interface SameIssuerAs {
   mic: string;
 }
 
+export interface ScenarioMetadataRequest {
+  expected_revision: number;
+  name?: string | null;
+  sort_order?: number | null;
+  parent_scenario_id?: string | null;
+  clear_parent?: boolean;
+  reason?: string | null;
+  admin_reason?: string | null;
+}
+
 export interface ScenarioOut {
   id: string;
   project_id: string;
@@ -1135,6 +1173,82 @@ export interface ScenarioOut {
   parent_scenario_id: string | null;
   revision_no: number;
   status: string;
+  probability?: string | null;
+  sort_order?: number;
+  updated_at?: string | null;
+}
+
+/** Per-scenario values and, when complete, the probability-weighted value (MASTER_BRIEF */
+export interface ScenarioSummaryOut {
+  project_id: string;
+  methodology: string;
+  scenarios: ScenarioValueOut[];
+  probabilities_sum: string | null;
+  weighted_per_share: string | null;
+  weighted_primary_value: string | null;
+  per_share_low: string | null;
+  per_share_high: string | null;
+  complete: boolean;
+  issues: string[];
+}
+
+export interface ScenarioValueOut {
+  scenario: ScenarioOut;
+  run: RunSummaryOut | null;
+}
+
+export interface SensitivityOut {
+  id: string;
+  run_id: string;
+  project_id: string;
+  kind: string;
+  metric: string;
+  label: string | null;
+  config: Record<string, unknown>;
+  cell_count: number;
+  refused_count: number;
+  result_sha256: string;
+  engine_version: string;
+  created_by: UserRef;
+  created_at: string;
+  config_sha256: string;
+  base: Record<string, unknown>;
+  cells: (Record<string, unknown>)[];
+}
+
+export interface SensitivityRequestIn {
+  kind: "one_way" | "two_way" | "tornado";
+  metric?: "per_share" | "equity_value" | "enterprise_value";
+  x?: AxisIn | null;
+  y?: AxisIn | null;
+  tornado?: TornadoIn[];
+  label?: string | null;
+  admin_reason?: string | null;
+}
+
+export interface SensitivitySummaryOut {
+  id: string;
+  run_id: string;
+  project_id: string;
+  kind: string;
+  metric: string;
+  label: string | null;
+  config: Record<string, unknown>;
+  cell_count: number;
+  refused_count: number;
+  result_sha256: string;
+  engine_version: string;
+  created_by: UserRef;
+  created_at: string;
+}
+
+export interface SensitivityVariableOut {
+  variable: string;
+  label: string;
+  low: string;
+  high: string;
+  shift: boolean;
+  methodologies: string[];
 }
 
 export interface StatementCellOut {
@@ -1167,6 +1281,12 @@ export interface StatusRequest {
   expected_revision: number;
   reason: string;
   admin_reason?: string | null;
+}
+
+export interface TornadoIn {
+  variable: "wacc" | "cost_of_equity" | "terminal_g" | "exit_multiple" | "revenue_growth_shift" | "ebit_margin_shift" | "capex_pct_shift";
+  low: string;
+  high: string;
 }
 
 export interface TraceOut {

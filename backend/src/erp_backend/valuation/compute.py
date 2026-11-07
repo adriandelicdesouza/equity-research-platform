@@ -12,7 +12,7 @@ to the engine's own trace.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, localcontext
 from typing import Any
@@ -379,9 +379,12 @@ def _shares(d: _Doc, b: date) -> Shares:
 
 
 def engine_inputs(
-    document: dict[str, Any], nodes: dict[str, Any]
+    document: dict[str, Any], nodes: dict[str, Any], discount_rate: Decimal | None = None
 ) -> tuple[ValuationInputs, dict[str, Any]]:
-    """Map an input document to the engine's typed inputs; returns them with the WACC build-up."""
+    """Map an input document to the engine's typed inputs; returns them with the WACC build-up.
+
+    ``discount_rate`` (sensitivities only) replaces the built-up discount rate — WACC for FCFF,
+    the cost of equity for FCFE — and is recorded as its own trace node."""
     d = _Doc(document)
     methodology = document["methodology"]
     currency = document["currency"]
@@ -433,8 +436,29 @@ def engine_inputs(
         "risk_free_rate": rf,
         "rate_currency": rf_currency,
     }
+    if discount_rate is not None and methodology == "dcf_fcfe":
+        common["cost_of_equity"] = discount_rate
+        build["cost_of_equity"] = discount_rate
+        _trace(
+            nodes,
+            "sensitivity.discount_rate",
+            "Cost of equity (sensitivity value)",
+            discount_rate,
+            "Replaced by the sensitivity grid; the build-up above is the run's",
+            ["wacc.cost_of_equity"],
+        )
     if methodology == "dcf_fcff":
         result = _wacc(d, ke.value, kd, price, nodes)
+        if discount_rate is not None:
+            _trace(
+                nodes,
+                "sensitivity.discount_rate",
+                "WACC (sensitivity value)",
+                discount_rate,
+                "Replaced by the sensitivity grid; the build-up above is the run's",
+                ["wacc.wacc"],
+            )
+            result = replace(result, wacc=discount_rate)
         build.update(
             wacc=result.wacc,
             weight_equity=result.weight_equity,
@@ -499,12 +523,13 @@ def _flows_table(result: ValuationResult) -> list[dict[str, Any]]:
     ]
 
 
-def compute(document: dict[str, Any]) -> Computation:
+def compute(document: dict[str, Any], discount_rate: Decimal | None = None) -> Computation:
     """Execute the methodology for an input document. Raises ``ValuationRefused`` with
-    ``engine_refused`` when the engine rejects the inputs."""
+    ``engine_refused`` when the engine rejects the inputs. ``discount_rate`` is for
+    sensitivity cells only; runs, previews and reproduction never pass it."""
     nodes: dict[str, Any] = {}
     try:
-        inputs, build = engine_inputs(document, nodes)
+        inputs, build = engine_inputs(document, nodes, discount_rate)
         result = run_valuation(inputs)
     except EngineError as exc:
         raise ValuationRefused("engine_refused", exc.message, [{"engine_code": exc.code}]) from exc

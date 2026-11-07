@@ -45,6 +45,7 @@ from erp_backend.models.val import (
     RunInput,
     RunTrace,
     Scenario,
+    SensitivityRun,
     ValuationProject,
     ValuationRun,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "Scenario",
     "SecTicker",
     "Security",
+    "SensitivityRun",
     "SourceImport",
     "StandardLineItem",
     "StatementImportValue",

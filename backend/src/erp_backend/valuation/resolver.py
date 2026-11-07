@@ -405,6 +405,8 @@ def _assumption_inputs(
             "source": row.source,
             "warnings": [],
         }
+        if cur.inherited_from is not None:
+            item["inherited_from"] = str(cur.inherited_from)
         if row.value is not None:
             item["value"] = row.value
         else:
@@ -704,6 +706,9 @@ def resolve(db: Session, project: ValuationProject, request: RunRequest) -> Reso
         res.add("error", "not_found", f"No scenario {request.scenario_id} in this project.")
         return res
     res.scenario = scenario
+    if scenario.status != "active":
+        res.add("error", "scenario_archived", "The scenario is archived; restore it first.")
+        return res
     if scenario.revision_no != request.expected_scenario_revision:
         res.add(
             "error",
@@ -778,7 +783,12 @@ def resolve(db: Session, project: ValuationProject, request: RunRequest) -> Reso
     if block.policy == "blocked":
         return res
     applied_checks = _check_gates(db, res, dataset, period, request)
-    state = asm.current_state(db, scenario)
+    try:
+        lineage = asm.ancestors(db, scenario)
+    except ValuationRefused as exc:
+        res.add("error", exc.code, exc.message)
+        return res
+    state = asm.resolved_state(db, scenario)
     inputs: dict[str, Any] = {}
     _assumption_inputs(db, res, state, request.methodology, block, v, currency, inputs)
     lease = state.value("lease_treatment") if request.methodology == "dcf_fcff" else None
@@ -804,6 +814,15 @@ def resolve(db: Session, project: ValuationProject, request: RunRequest) -> Reso
             "project_id": str(project.id),
             "scenario_id": str(scenario.id),
             "scenario_revision": scenario.revision_no,
+            **(
+                {
+                    "scenario_lineage": [
+                        {"id": str(a.id), "revision": a.revision_no} for a in lineage
+                    ]
+                }
+                if lineage
+                else {}
+            ),
             "methodology": request.methodology,
             "method_version": method["version"],
             "company_id": str(project.company_id),

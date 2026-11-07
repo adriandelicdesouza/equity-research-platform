@@ -5,6 +5,10 @@ latest revision. One request is one scenario revision: all of its changes apply 
 Approval is a revision too, so who approved what, and when, stays in the history. Only
 ``approved`` values may enter a saved run.
 
+**Inheritance (Phase 5b):** a scenario's *resolved* state overlays its ancestors' current
+values, root first, with its own on top; a ``cleared`` revision in a child hides an inherited
+value. Runs use the resolved state; revisions and approvals act on the scenario's own rows.
+
 Units: ratios are fractions (``0.05`` = 5%), money is in the dataset's currency, counts are
 integers. Values sourced from a stored rate or reference value must equal that source after
 conversion at this boundary (percentage points → fractions).
@@ -271,6 +275,7 @@ class Current:
     """The current revision of one (key, period_index)."""
 
     row: AssumptionRevision
+    inherited_from: uuid.UUID | None = None  # the ancestor scenario the value comes from
 
     @property
     def key(self) -> str:
@@ -445,8 +450,11 @@ def _validate_source(
     return resolved.provenance_kind, resolved.record
 
 
-def current_state(db: Session, scenario: Scenario) -> State:
-    """Latest revision per (key, period); cleared keys are absent."""
+MAX_DEPTH = 8  # scenario inheritance depth (root included)
+
+
+def _latest_rows(db: Session, scenario_id: uuid.UUID) -> list[AssumptionRevision]:
+    """Latest revision per (key, period) of one scenario, ``cleared`` rows included."""
     rank = (
         func.row_number()
         .over(
@@ -460,18 +468,59 @@ def current_state(db: Session, scenario: Scenario) -> State:
     )
     sub = (
         select(AssumptionRevision.id, rank)
-        .where(AssumptionRevision.scenario_id == scenario.id)
+        .where(AssumptionRevision.scenario_id == scenario_id)
         .subquery()
     )
-    rows = db.scalars(
-        select(AssumptionRevision)
-        .join(sub, sub.c.id == AssumptionRevision.id)
-        .where(sub.c.rank == 1, AssumptionRevision.status != "cleared")
-        .order_by(AssumptionRevision.key, AssumptionRevision.period_index)
-    ).all()
+    return list(
+        db.scalars(
+            select(AssumptionRevision)
+            .join(sub, sub.c.id == AssumptionRevision.id)
+            .where(sub.c.rank == 1)
+            .order_by(AssumptionRevision.key, AssumptionRevision.period_index)
+        ).all()
+    )
+
+
+def current_state(db: Session, scenario: Scenario) -> State:
+    """The scenario's own latest revision per (key, period); cleared keys are absent."""
     state = State(scenario.revision_no)
-    for r in rows:
-        state.items[(r.key, r.period_index)] = Current(r)
+    for r in _latest_rows(db, scenario.id):
+        if r.status != "cleared":
+            state.items[(r.key, r.period_index)] = Current(r)
+    return state
+
+
+def ancestors(db: Session, scenario: Scenario) -> list[Scenario]:
+    """The parent chain, nearest first. Raises on a cycle or excessive depth (the service
+    refuses both on write; this guards reads against corrupted data)."""
+    out: list[Scenario] = []
+    seen = {scenario.id}
+    parent_id = scenario.parent_scenario_id
+    while parent_id is not None:
+        parent = db.get(Scenario, parent_id)
+        if parent is None or parent.id in seen or len(out) + 1 >= MAX_DEPTH:
+            raise ValuationRefused(
+                "scenario_cycle", "The scenario's inheritance chain is invalid.", []
+            )
+        seen.add(parent.id)
+        out.append(parent)
+        parent_id = parent.parent_scenario_id
+    return out
+
+
+def resolved_state(db: Session, scenario: Scenario) -> State:
+    """Values with inheritance applied: ancestors root first, then the scenario's own rows.
+    Without a parent this equals ``current_state``."""
+    chain = [*reversed(ancestors(db, scenario)), scenario]
+    state = State(scenario.revision_no)
+    for s in chain:
+        inherited = s.id if s.id != scenario.id else None
+        for r in _latest_rows(db, s.id):
+            ident = (r.key, r.period_index)
+            if r.status == "cleared":
+                state.items.pop(ident, None)
+            else:
+                state.items[ident] = Current(r, inherited)
     return state
 
 
@@ -489,7 +538,15 @@ def _scenario_for_write(
     assert project is not None
     access = write_access(project, actor, admin_reason)
     require_active(project)
+    require_active_scenario(scenario)
     return scenario, project, access
+
+
+def require_active_scenario(scenario: Scenario) -> None:
+    if scenario.status != "active":
+        raise ValuationRefused(
+            "scenario_archived", "The scenario is archived; restore it before changing it."
+        )
 
 
 def _snap(row: AssumptionRevision | None) -> dict[str, Any] | None:
@@ -546,7 +603,10 @@ def revise(
             )
         seen.add(ident)
         if change.clear:
-            if before.get(*ident) is None:
+            if before.get(*ident) is None and (
+                scenario.parent_scenario_id is None
+                or resolved_state(db, scenario).get(*ident) is None
+            ):
                 raise _refuse("nothing_to_clear", f"{change.key} has no value.", change)
             rows.append(
                 AssumptionRevision(
