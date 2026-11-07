@@ -12,7 +12,9 @@
    rolled back, then the refusal alone is recorded and committed — nothing else persists.
 3. **Errors:** domain refusals map to the standard envelope — ``409 action_refused`` for a
    state conflict (e.g. locking a dataset with open material conflicts), ``422`` for
-   invalid input. Unexpected errors roll back and surface as the generic ``500``.
+   invalid input. Valuation refusals (``ValuationRefused``) keep their specific code and
+   ``details`` (``409 dataset_not_locked``, …) so the UI can explain them. Unexpected errors
+   roll back and surface as the generic ``500``.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from erp_backend.models import ApiAction
 from erp_backend.observability import current_request_id
 from erp_backend.reference.damodaran import ImportRefusedError as ReferenceImportRefused
 from erp_backend.statements.file_import import ImportRefusedError as StatementImportRefused
+from erp_backend.valuation.errors import ValuationRefused
 
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 REPLAY_HEADER = "Idempotent-Replayed"
@@ -128,6 +131,7 @@ def perform(
     idempotency_key: str | None,
     target: str | None,
     run: Callable[[], tuple[int, BaseModel]],
+    action_id: uuid.UUID | None = None,
 ) -> JSONResponse:
     fingerprint = request_fingerprint(action, request)
     key = (idempotency_key or "").strip() or None
@@ -135,9 +139,11 @@ def perform(
         replay = _replay(db, ctx, key, action, fingerprint)
         if replay is not None:
             return replay
-    action_id = uuid.uuid4()
+    action_id = action_id or uuid.uuid4()  # a caller may pre-assign it to reference it
     try:
         status, result = run()
+    except ValuationRefused as exc:
+        error = ApiError(409, exc.code, exc.message, exc.details or None)
     except DOMAIN_ERRORS as exc:
         error = ApiError(409, "action_refused", str(exc))
     except ApiError as exc:
@@ -164,6 +170,8 @@ def perform(
 
     db.rollback()  # nothing of the refused action persists
     body = {"error": {"code": error.code, "message": error.message, "action_id": str(action_id)}}
+    if error.details:
+        body["error"]["details"] = error.details  # type: ignore[index]
     _record(db, ctx, action_id=action_id, action=action, key=key, fingerprint=fingerprint,
             target=target, status=error.status_code, outcome="refused", response=body)  # fmt: skip
     try:

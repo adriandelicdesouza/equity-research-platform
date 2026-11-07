@@ -2,6 +2,11 @@
 // Do not edit by hand: run `make api-types`. A backend test fails when this is stale.
 
 
+export interface AckIn {
+  code: string;
+  reason: string;
+}
+
 export interface ActionOut {
   action_id: string;
   action: string;
@@ -17,6 +22,60 @@ export interface ActionRecordOut {
   idempotency_key: string | null;
   created_at: string;
   response: Record<string, unknown>;
+}
+
+export interface AnalystSource {
+  type: "analyst";
+  reference: string;
+  as_of?: string | null;
+  currency?: string | null;
+}
+
+export interface ApproveItem {
+  key: string;
+  period_index?: number | null;
+}
+
+export interface ApproveRequest {
+  expected_revision: number;
+  items: ApproveItem[];
+  reason?: string | null;
+  admin_reason?: string | null;
+}
+
+export interface AssumptionItemOut {
+  key: string;
+  period_index: number | null;
+  value: string | null;
+  json?: unknown;
+  unit: string;
+  status: string;
+  provenance_kind: string;
+  source: Record<string, unknown> | null;
+  note: string | null;
+  revision_id: number;
+  scenario_revision_no: number;
+  created_by: string;
+  created_at: string;
+}
+
+export interface AssumptionStateOut {
+  scenario_id: string;
+  scenario_revision: number;
+  methodology: string;
+  items: AssumptionItemOut[];
+  missing_required: RequiredKeyOut[];
+  unapproved: RequiredKeyOut[];
+}
+
+export interface BlockOut {
+  id: string;
+  block_version: string;
+  classification: string;
+  methodology: string;
+  policy: string;
+  definition: Record<string, unknown>;
+  definition_sha256: string;
 }
 
 export interface BuildRequest {
@@ -37,6 +96,31 @@ export interface CandidateOut {
   detail: Record<string, unknown>;
 }
 
+export interface CandidatesOut {
+  valuation_date: string;
+  currency: string;
+  dataset: DatasetRef;
+  periods: PeriodCandidateOut[];
+  rates: RateCandidateOut[];
+  prices: PriceCandidateOut[];
+  fx: FxCandidateOut[];
+  reference: ReferenceCandidateOut[];
+  notes: string[];
+}
+
+export interface ChangeIn {
+  key: string;
+  period_index?: number | null;
+  value?: string | null;
+  choice?: string | null;
+  text?: string | null;
+  json?: (Record<string, unknown>)[] | null;
+  clear?: boolean;
+  source?: unknown | null;
+  status?: "approved" | "suggested";
+  note?: string | null;
+}
+
 export interface CheckOut {
   id: number;
   check_code: string;
@@ -51,6 +135,12 @@ export interface CheckOut {
   unit: string | null;
   message: string;
   inputs: Record<string, unknown>;
+}
+
+export interface CheckOverrideIn {
+  check_code: string;
+  subject: string;
+  reason: string;
 }
 
 export interface ClassificationOut {
@@ -143,6 +233,31 @@ export interface CorporateActionOut {
   origin: OriginOut;
 }
 
+export interface CreateProjectRequest {
+  company_id: string;
+  name: string;
+  dataset_id: string;
+  listing_id?: string | null;
+  thesis?: string | null;
+}
+
+export interface CreateRunRequest {
+  methodology: "dcf_fcff" | "dcf_fcfe";
+  scenario_id: string;
+  expected_scenario_revision: number;
+  dataset: DatasetPin;
+  balance_sheet_period_id: string;
+  valuation_date: string;
+  listing_id?: string | null;
+  price_observation_id?: number | null;
+  fx_rate_ids?: number[];
+  input_overrides?: OverrideIn[];
+  acknowledgements?: AckIn[];
+  check_overrides?: CheckOverrideIn[];
+  admin_reason?: string | null;
+  label?: string | null;
+}
+
 export interface CurrencyRequest {
   currency: string;
   reason: string;
@@ -198,6 +313,20 @@ export interface DatasetOut {
   status_reason: string | null;
 }
 
+export interface DatasetPin {
+  id: string;
+  content_sha256: string;
+}
+
+export interface DatasetRef {
+  id: string;
+  version_no: number;
+  basis: string;
+  status: string;
+  currency: string;
+  content_sha256: string;
+}
+
 export interface FactSourceOut {
   fact_id: number;
   taxonomy: string;
@@ -228,6 +357,18 @@ export interface FinancialValueOut {
   import_source: ImportSourceOut | null;
 }
 
+export interface FxCandidateOut {
+  fx_rate_id: number;
+  base: string;
+  quote: string;
+  obs_date: string;
+  rate: string;
+  provider_series_id: string;
+  conversion: string;
+  stale: boolean;
+  status?: string;
+}
+
 export interface FxRateOut {
   observation_id: number;
   base: string;
@@ -251,6 +392,24 @@ export interface HealthOut {
   version: string;
   engine_version: string;
   environment: string;
+}
+
+export interface HistoricalContextOut {
+  dataset: DatasetRef;
+  years: HistoryYearOut[];
+  note: string;
+}
+
+export interface HistoryYearOut {
+  fiscal_year: number;
+  end_date: string;
+  revenue: string | null;
+  revenue_growth: string | null;
+  ebit_margin: string | null;
+  tax_rate: string | null;
+  da_pct: string | null;
+  capex_pct: string | null;
+  nwc_pct: string | null;
 }
 
 export interface IdentifierOut {
@@ -314,12 +473,34 @@ export interface IntegrityOut {
   note: string;
 }
 
+export interface IssueOut {
+  level: string;
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
 /** Exactly one way of naming the issuer (the service refuses anything else, too). */
 export interface IssuerIn {
   company_id?: string | null;
   same_issuer_as?: SameIssuerAs | null;
   cik?: number | null;
   new?: NewIssuerIn | null;
+}
+
+export interface KeySpecOut {
+  key: string;
+  kind: string;
+  label: string;
+  unit: string;
+  per_period: boolean;
+  choices: string[];
+  low: string | null;
+  high: string | null;
+  sources: string[];
+  source_required: boolean;
+  market: boolean;
+  methodologies: string[];
 }
 
 export interface ListingOut {
@@ -365,6 +546,16 @@ export interface MeOut {
   session_expires_at: string;
 }
 
+export interface MetadataRequest {
+  expected_revision: number;
+  name?: string | null;
+  thesis?: string | null;
+  listing_id?: string | null;
+  clear_listing?: boolean;
+  clear_thesis?: boolean;
+  admin_reason?: string | null;
+}
+
 export interface NewIssuerIn {
   legal_name: string;
   country: string;
@@ -379,8 +570,30 @@ export interface OriginOut {
   import_row?: number | null;
 }
 
+export interface OverrideIn {
+  input: string;
+  line_item?: string | null;
+  kind: "value" | "not_applicable";
+  value?: string | null;
+  source?: string | null;
+  reason: string;
+}
+
+export interface OwnerRequest {
+  expected_revision: number;
+  user_id: string;
+  reason: string;
+}
+
 export interface Page_ActionRecordOut_ {
   items: ActionRecordOut[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface Page_AssumptionItemOut_ {
+  items: AssumptionItemOut[];
   total: number;
   limit: number;
   offset: number;
@@ -463,6 +676,13 @@ export interface Page_PriceOut_ {
   offset: number;
 }
 
+export interface Page_ProjectOut_ {
+  items: ProjectOut[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface Page_RateObservationOut_ {
   items: RateObservationOut[];
   total: number;
@@ -498,12 +718,51 @@ export interface Page_ResolutionOut_ {
   offset: number;
 }
 
+export interface Page_RunSummaryOut_ {
+  items: RunSummaryOut[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PeriodCandidateOut {
+  id: string;
+  fiscal_year: number;
+  start_date: string;
+  end_date: string;
+  value_count: number;
+}
+
 export interface PeriodOut {
   fiscal_year: number;
   period_type: string;
   start_date: string;
   end_date: string;
   weeks: number | null;
+}
+
+export interface PreviewOut {
+  preview?: boolean;
+  dataset_status: string | null;
+  can_save: boolean;
+  issues: IssueOut[];
+  input_document: Record<string, unknown> | null;
+  outputs: Record<string, unknown> | null;
+  validation: (Record<string, unknown>)[];
+  trace: Record<string, unknown> | null;
+  engine_refusal: Record<string, unknown> | null;
+}
+
+export interface PriceCandidateOut {
+  observation_id: number;
+  listing_id: string;
+  provider_code: string;
+  close_basis: string;
+  trade_date: string;
+  close: string;
+  currency: string;
+  stale: boolean;
+  status?: string;
 }
 
 export interface PriceOut {
@@ -521,6 +780,56 @@ export interface PriceOut {
   provider_code: string;
   origin: OriginOut;
   revisions: number;
+}
+
+export interface ProjectDetailOut {
+  id: string;
+  company_id: string;
+  company_name: string;
+  listing_id: string | null;
+  name: string;
+  thesis: string | null;
+  status: string;
+  status_reason: string | null;
+  owner: UserRef;
+  dataset: DatasetRef;
+  revision_no: number;
+  created_at: string;
+  created_by: UserRef;
+  updated_at: string | null;
+  scenarios: ScenarioOut[];
+  newer_locked_dataset: DatasetRef | null;
+  classification: string;
+  recent_runs: RunSummaryOut[];
+}
+
+export interface ProjectOut {
+  id: string;
+  company_id: string;
+  company_name: string;
+  listing_id: string | null;
+  name: string;
+  thesis: string | null;
+  status: string;
+  status_reason: string | null;
+  owner: UserRef;
+  dataset: DatasetRef;
+  revision_no: number;
+  created_at: string;
+  created_by: UserRef;
+  updated_at: string | null;
+}
+
+export interface RateCandidateOut {
+  observation_id: number;
+  series_code: string;
+  tenor: string;
+  currency: string;
+  obs_date: string;
+  value_pp: string;
+  value_fraction: string;
+  stale: boolean;
+  status?: string;
 }
 
 export interface RateObservationOut {
@@ -550,13 +859,38 @@ export interface RateSeriesOut {
   last_date: string | null;
 }
 
+export interface RateSource {
+  type: "rate_observation";
+  observation_id: number;
+}
+
 export interface ReasonRequest {
   reason: string;
+}
+
+export interface RebaseRequest {
+  expected_revision: number;
+  dataset_id: string;
+  content_sha256: string;
+  reason: string;
+  admin_reason?: string | null;
 }
 
 export interface RebuildRequest {
   basis?: "standardized" | "reported";
   reason: string;
+}
+
+export interface ReferenceCandidateOut {
+  reference_dataset_id: string;
+  dataset_kind: string;
+  edition_date: string;
+  region: string | null;
+  variant: string | null;
+  version_no: number;
+  record_count: number;
+  stale: boolean;
+  status?: string;
 }
 
 export interface ReferenceDatasetDetailOut {
@@ -611,6 +945,13 @@ export interface ReferenceRecordOut {
   fields: Record<string, ReferenceValueOut>;
 }
 
+export interface ReferenceSource {
+  type: "reference_value";
+  reference_dataset_id: string;
+  record_key: string;
+  field: string;
+}
+
 export interface ReferenceValueOut {
   record_key: string;
   field: string;
@@ -619,6 +960,23 @@ export interface ReferenceValueOut {
   unit: string;
   import_row: number;
   locator: string;
+}
+
+export interface ReproductionOut {
+  run_id: string;
+  matches: boolean;
+  same_engine: boolean;
+  stored_output_sha256: string;
+  recomputed_output_sha256: string | null;
+  stored_engine: Record<string, unknown>;
+  current_engine: Record<string, unknown>;
+  differences: (Record<string, unknown>)[];
+  refusal: Record<string, unknown> | null;
+}
+
+export interface RequiredKeyOut {
+  key: string;
+  period_index: number | null;
 }
 
 export interface ResolutionOut {
@@ -647,11 +1005,136 @@ export interface ResolutionRequest {
   source_reference?: string | null;
 }
 
+export interface ReviseRequest {
+  expected_revision: number;
+  changes: ChangeIn[];
+  reason?: string | null;
+  admin_reason?: string | null;
+}
+
 export type Role = "admin" | "analyst" | "reviewer";
+
+export interface RunDecisionOut {
+  kind: string;
+  code: string;
+  reason: string;
+  detail: Record<string, unknown>;
+  user: UserRef;
+  created_at: string;
+}
+
+export interface RunInputOut {
+  input_key: string;
+  value: string | null;
+  json?: unknown;
+  unit: string;
+  source_value: string | null;
+  source_unit: string | null;
+  conversion: string | null;
+  provenance_kind: string;
+  source_type: string;
+  source_ref: string | null;
+  source_sha256: string | null;
+  as_of_date: string | null;
+  warnings: string[];
+}
+
+export interface RunInputsOut {
+  run_id: string;
+  input_sha256: string;
+  input_document: Record<string, unknown>;
+  lineage: RunInputOut[];
+}
+
+export interface RunOut {
+  id: string;
+  project_id: string;
+  scenario_id: string;
+  scenario_revision_no: number;
+  methodology: string;
+  produces: string;
+  dataset_id: string;
+  dataset_version_no: number;
+  dataset_basis: string;
+  classification: string;
+  valuation_date: string;
+  balance_sheet_date: string;
+  currency: string;
+  primary_value: string;
+  per_share_value: string;
+  label: string | null;
+  warnings: (Record<string, unknown>)[];
+  input_sha256: string;
+  output_sha256: string;
+  engine_version: string;
+  created_by: UserRef;
+  created_at: string;
+  method_version: string;
+  block_id: string;
+  dataset_content_sha256: string;
+  engine_input_sha256: string;
+  module_versions: Record<string, string>;
+  outputs: Record<string, unknown>;
+  validation: (Record<string, unknown>)[];
+  decisions: RunDecisionOut[];
+  trace_sha256: string;
+  trace_node_count: number;
+}
+
+export interface RunRequestIn {
+  methodology: "dcf_fcff" | "dcf_fcfe";
+  scenario_id: string;
+  expected_scenario_revision: number;
+  dataset: DatasetPin;
+  balance_sheet_period_id: string;
+  valuation_date: string;
+  listing_id?: string | null;
+  price_observation_id?: number | null;
+  fx_rate_ids?: number[];
+  input_overrides?: OverrideIn[];
+  acknowledgements?: AckIn[];
+  check_overrides?: CheckOverrideIn[];
+  admin_reason?: string | null;
+}
+
+export interface RunSummaryOut {
+  id: string;
+  project_id: string;
+  scenario_id: string;
+  scenario_revision_no: number;
+  methodology: string;
+  produces: string;
+  dataset_id: string;
+  dataset_version_no: number;
+  dataset_basis: string;
+  classification: string;
+  valuation_date: string;
+  balance_sheet_date: string;
+  currency: string;
+  primary_value: string;
+  per_share_value: string;
+  label: string | null;
+  warnings: (Record<string, unknown>)[];
+  input_sha256: string;
+  output_sha256: string;
+  engine_version: string;
+  created_by: UserRef;
+  created_at: string;
+}
 
 export interface SameIssuerAs {
   ticker: string;
   mic: string;
+}
+
+export interface ScenarioOut {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: string;
+  parent_scenario_id: string | null;
+  revision_no: number;
+  status: string;
 }
 
 export interface StatementCellOut {
@@ -680,6 +1163,20 @@ export interface StatementRowOut {
   cells: (StatementCellOut | null)[];
 }
 
+export interface StatusRequest {
+  expected_revision: number;
+  reason: string;
+  admin_reason?: string | null;
+}
+
+export interface TraceOut {
+  run_id: string;
+  trace_sha256: string;
+  root: string | null;
+  nodes: Record<string, Record<string, unknown>>;
+  truncated: boolean;
+}
+
 export interface UserCreate {
   username: string;
   display_name: string;
@@ -694,6 +1191,11 @@ export interface UserOut {
   roles: string[];
   is_active: boolean;
   last_login_at: string | null;
+}
+
+export interface UserRef {
+  id: string;
+  username: string;
 }
 
 export interface ValidationError {

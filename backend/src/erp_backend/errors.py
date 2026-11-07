@@ -8,15 +8,24 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from erp_backend.valuation.errors import ValuationRefused
+
 _log = structlog.get_logger("erp.api")
 
 
 class ApiError(Exception):
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        details: list[dict[str, object]] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.details = details
 
 
 def _body(code: str, message: str, **extra: object) -> dict[str, object]:
@@ -26,7 +35,13 @@ def _body(code: str, message: str, **extra: object) -> dict[str, object]:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(_body(exc.code, exc.message), status_code=exc.status_code)
+        extra = {"details": exc.details} if exc.details else {}
+        return JSONResponse(_body(exc.code, exc.message, **extra), status_code=exc.status_code)
+
+    @app.exception_handler(ValuationRefused)
+    async def _valuation_refused(_: Request, exc: ValuationRefused) -> JSONResponse:
+        extra = {"details": exc.details} if exc.details else {}
+        return JSONResponse(_body(exc.code, exc.message, **extra), status_code=409)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
