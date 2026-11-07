@@ -6,7 +6,15 @@ import { useIdempotency } from "../../components/idempotency";
 import { Badge, Dialog, DialogButtons, ErrorMessage, GuardedButton, Loading, Notice } from "../../components/ui";
 import { formatDecimal } from "../../lib/decimal";
 import { href, navigate, type Route } from "../../lib/router";
-import { DcfOutputs, type Issue, IssueList, type Json, ValidationList } from "./common";
+import {
+  DcfOutputs,
+  type Issue,
+  IssueList,
+  type Json,
+  ScenarioPicker,
+  selectedScenario,
+  ValidationList,
+} from "./common";
 import { useEditRights } from "./ProjectPage";
 
 interface OverrideDraft {
@@ -24,7 +32,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export function RunBuilder({ project, route }: { project: ProjectDetailOut; route: Route }) {
   const rights = useEditRights(project);
   const idem = useIdempotency();
-  const scenario = project.scenarios.find((s) => s.kind === "base") ?? project.scenarios[0];
+  const scenario = selectedScenario(project, route.query.get("scenario"));
   const [method, setMethod] = useState<Methodology>((route.query.get("method") as Methodology | null) ?? "dcf_fcff");
   const [valuationDate, setValuationDate] = useState(today());
   const [periodId, setPeriodId] = useState("");
@@ -119,6 +127,7 @@ export function RunBuilder({ project, route }: { project: ProjectDetailOut; rout
           or a newer reference edition; candidates below are suggestions with their row ids.
         </p>
         <div className="form-grid">
+          {scenario && <ScenarioPicker project={project} route={route} value={scenario.id} />}
           <label>
             Methodology
             <select value={method} onChange={(e) => setMethod(e.target.value as Methodology)}>

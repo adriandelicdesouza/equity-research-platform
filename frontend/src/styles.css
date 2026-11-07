@@ -223,3 +223,21 @@ fieldset.override { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: ce
 .tabs button.tab { background: none; border: 0; border-radius: 6px 6px 0 0; color: var(--muted); padding: 0.4rem 0.7rem; cursor: pointer; }
 .tabs button.tab[aria-pressed="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
 .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: end; }
+
+/* Sensitivity (Phase 5b): the run's own cell, and server-ranked tornado bars. */
+td.base-cell {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.tornado-bar {
+  display: inline-block;
+  width: 10rem;
+  height: 0.75rem;
+  background: var(--accent-soft);
+  vertical-align: middle;
+}
+.tornado-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}

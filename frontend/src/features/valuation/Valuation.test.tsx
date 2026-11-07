@@ -357,3 +357,168 @@ describe("Refusal details", () => {
     expect(screen.getByText(/Only the project owner may change this project\./, { selector: "strong" })).toBeInTheDocument();
   });
 });
+
+// ------------------------------------------------------------------ Phase 5b
+
+const BULL = "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb";
+const BASE_S = { id: SID, project_id: PID, name: "Base", kind: "base", parent_scenario_id: null, revision_no: 1, status: "active", probability: "0.6", sort_order: 0, updated_at: null };
+const BULL_S = { ...BASE_S, id: BULL, name: "Bull", kind: "bull", parent_scenario_id: SID, revision_no: 2, probability: "0.4", sort_order: 1 };
+
+describe("Scenarios", () => {
+  it("lists scenarios with inheritance and probabilities, shows the server's weighted value and creates one", async () => {
+    const { calls } = mockFetch({
+      [`GET ${P}`]: project({ scenarios: [BASE_S, BULL_S] }),
+      [`GET ${P}/scenario-summary`]: {
+        project_id: PID, methodology: "dcf_fcff",
+        scenarios: [{ scenario: BASE_S, run: RUN }, { scenario: BULL_S, run: null }],
+        probabilities_sum: "1.0", weighted_per_share: null, weighted_primary_value: null,
+        per_share_low: RUN.per_share_value, per_share_high: RUN.per_share_value, complete: false,
+        issues: ["Scenario 'Bull' has a probability but no dcf_fcff run."],
+      },
+      [`POST ${P}/scenarios`]: () => ({ status: 201, body: { action_id: "s", action: "valuation.scenario_create", result: { ...BULL_S, id: "new", name: "Bear", kind: "bear" } } }),
+      [`POST ${P}/probabilities`]: apiError(409, "weights_not_one", "The probabilities sum to 0.9, not exactly 1.", { details: [{ sum: "0.9" }] }),
+    });
+    const user = userEvent.setup();
+    renderWithSession(<ProjectPage projectId={PID} tab="scenarios" rest={[]} route={routeTo(`#/valuations/${PID}/scenarios`)} />, ME);
+    const table = await screen.findByRole("region", { name: "Scenarios" });
+    const bullRow = within(table).getByRole("row", { name: /Bull/ });
+    expect(within(bullRow).getByText("Base")).toBeInTheDocument(); // inherits from
+    expect(within(bullRow).getByText("40.00%")).toBeInTheDocument();
+    expect(within(bullRow).getByText("no run")).toBeInTheDocument();
+    expect(within(bullRow).getByRole("link", { name: "assumptions" })).toHaveAttribute("href", `#/valuations/${PID}/assumptions?scenario=${BULL}`);
+    expect(await screen.findByText(/has a probability but no dcf_fcff run/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add scenario…" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Name"), "Bear");
+    await user.selectOptions(within(dialog).getByLabelText("Kind"), "bear");
+    await user.click(within(dialog).getByRole("button", { name: "Add scenario" }));
+    await waitFor(() => expect(calls.some((c) => c.path === `${P}/scenarios` && c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.path === `${P}/scenarios`)?.body).toEqual({ name: "Bear", kind: "bear", parent_scenario_id: SID });
+
+    const weights = screen.getByRole("region", { name: "Scenario probabilities" });
+    const bullWeight = within(weights).getByLabelText("Probability of Bull");
+    await user.clear(bullWeight);
+    await user.type(bullWeight, "0.3");
+    await user.click(within(weights).getByRole("button", { name: "Save probabilities" }));
+    expect(await within(weights).findByText(/sum to 0.9, not exactly 1/)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === `${P}/probabilities`)?.body).toEqual({
+      expected_revision: 1,
+      weights: { [SID]: "0.6", [BULL]: "0.3" },
+    });
+  });
+
+  it("marks inherited assumptions in a child scenario chosen from the route", async () => {
+    mockFetch({
+      [`GET ${P}`]: project({ scenarios: [BASE_S, BULL_S] }),
+      "GET /api/valuation/assumption-keys": KEYS,
+      [`GET /api/valuation/scenarios/${BULL}/assumptions`]: {
+        ...STATE,
+        scenario_id: BULL,
+        resolved: true,
+        items: [item("horizon_years", "2", { unit: "count", inherited_from: SID }), item("terminal_growth", "0.03")],
+        missing_required: [],
+        unapproved: [],
+      },
+      [`GET ${P}/historical-context`]: { dataset: project().dataset, years: [], note: "" },
+    });
+    renderWithSession(
+      <ProjectPage projectId={PID} tab="assumptions" rest={[]} route={routeTo(`#/valuations/${PID}/assumptions?scenario=${BULL}`)} />,
+      ME,
+    );
+    expect(await screen.findByText(/1 value\(s\) are inherited from Base/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Scenario")).toHaveValue(BULL);
+    expect(screen.getAllByText("inherited").length).toBeGreaterThan(0);
+  });
+});
+
+describe("Sensitivity", () => {
+  const GRID = {
+    id: "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e", run_id: RID, project_id: PID, kind: "two_way", metric: "per_share",
+    label: "WACC × g", config: { kind: "two_way", metric: "per_share", x: { variable: "wacc", values: ["0.09", "0.10"] }, y: { variable: "terminal_g", values: ["0.02", "0.10"] }, tornado: [] },
+    cell_count: 4, refused_count: 2, result_sha256: "f".repeat(64), engine_version: "0.1.0",
+    created_by: { id: ME.user.id, username: ME.user.username }, created_at: "2026-11-07T12:00:00Z",
+    config_sha256: "9".repeat(64),
+    base: { value: OUTPUTS.per_share, x: "0.1", y: "0.02" },
+    cells: [
+      { x: "0.09", y: "0.02", value: "18.5", refused_code: null, message: null },
+      { x: "0.10", y: "0.02", value: OUTPUTS.per_share, refused_code: null, message: null },
+      { x: "0.09", y: "0.10", value: null, refused_code: "terminal_growth_not_below_rate", message: "g must be below WACC." },
+      { x: "0.10", y: "0.10", value: null, refused_code: "terminal_growth_not_below_rate", message: "g must be below WACC." },
+    ],
+  };
+  const VARS = [
+    { variable: "wacc", label: "WACC", low: "0.0001", high: "1", shift: false, methodologies: ["dcf_fcff"] },
+    { variable: "terminal_g", label: "Terminal growth", low: "-0.1", high: "0.2", shift: false, methodologies: ["dcf_fcff", "dcf_fcfe"] },
+    { variable: "ebit_margin_shift", label: "EBIT margin (shift)", low: "-1", high: "1", shift: true, methodologies: ["dcf_fcff", "dcf_fcfe"] },
+  ];
+
+  it("computes a two-way grid on the server, marks refused cells and the run's own cell", async () => {
+    let created = false;
+    const { calls } = mockFetch({
+      [`GET ${P}`]: project(),
+      [`GET /api/valuation/runs/${RID}`]: RUN_DETAIL,
+      "GET /api/valuation/sensitivity-variables": VARS,
+      [`GET /api/valuation/runs/${RID}/sensitivities`]: () => ({ body: page(created ? [GRID] : []) }),
+      [`POST /api/valuation/runs/${RID}/sensitivities`]: () => {
+        created = true;
+        return { status: 201, body: { action_id: "g", action: "valuation.sensitivity_create", result: { existing: false, sensitivity: GRID } } };
+      },
+      [`GET /api/valuation/sensitivities/${GRID.id}`]: GRID,
+    });
+    const user = userEvent.setup();
+    renderWithSession(<ProjectPage projectId={PID} tab="runs" rest={[RID]} route={routeTo(`#/valuations/${PID}/runs/${RID}`)} />, ME);
+    await user.click(await screen.findByRole("button", { name: "Sensitivity" }));
+    expect(await screen.findByText("None yet for this run.")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("X values"), "0.09, 0.10");
+    await user.type(screen.getByLabelText("Y values"), "0.02 0.10");
+    await user.click(screen.getByRole("button", { name: "Compute and store" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/sensitivities"))).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/sensitivities"))?.body).toEqual({
+      kind: "two_way", metric: "per_share", label: null,
+      x: { variable: "wacc", values: ["0.09", "0.10"] }, y: { variable: "terminal_g", values: ["0.02", "0.10"] },
+    });
+    const grid = await screen.findByRole("table", { name: "Two-way sensitivity grid" });
+    expect(within(grid).getAllByText("refused")).toHaveLength(2);
+    const own = within(grid).getByText("(run)").closest("td");
+    expect(own).toHaveAttribute("aria-current", "true");
+    expect(within(grid).getByText("18.5000 USD")).toBeInTheDocument();
+  });
+
+  it("renders a tornado in the server's order with its bars", async () => {
+    const TORNADO = {
+      ...GRID, id: "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e", kind: "tornado", label: null, refused_count: 0, cell_count: 4,
+      config: { kind: "tornado", metric: "per_share", x: null, y: null, tornado: [] },
+      base: {
+        value: "16", variables: { wacc: "0.1", ebit_margin_shift: "0" },
+        ranking: [
+          { variable: "wacc", low: "19", high: "14", swing: "5", share: "1" },
+          { variable: "ebit_margin_shift", low: "15", high: "17", swing: "2", share: "0.4" },
+        ],
+      },
+      cells: [
+        { variable: "wacc", side: "low", x: "0.09", value: "19", refused_code: null, message: null },
+        { variable: "wacc", side: "high", x: "0.11", value: "14", refused_code: null, message: null },
+        { variable: "ebit_margin_shift", side: "low", x: "-0.01", value: "15", refused_code: null, message: null },
+        { variable: "ebit_margin_shift", side: "high", x: "0.01", value: "17", refused_code: null, message: null },
+      ],
+    };
+    mockFetch({
+      [`GET ${P}`]: project(),
+      [`GET /api/valuation/runs/${RID}`]: RUN_DETAIL,
+      "GET /api/valuation/sensitivity-variables": VARS,
+      [`GET /api/valuation/runs/${RID}/sensitivities`]: page([TORNADO]),
+      [`GET /api/valuation/sensitivities/${TORNADO.id}`]: TORNADO,
+    });
+    const user = userEvent.setup();
+    renderWithSession(<ProjectPage projectId={PID} tab="runs" rest={[RID]} route={routeTo(`#/valuations/${PID}/runs/${RID}`)} />, ME);
+    await user.click(await screen.findByRole("button", { name: "Sensitivity" }));
+    const table = await screen.findByRole("table", { name: "Tornado" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual([
+      "wacc (0.09 → 0.11)",
+      "ebit_margin_shift (-0.01 → 0.01)",
+    ]);
+    expect(within(table).getByRole("img", { name: "swing 2" }).firstElementChild).toHaveStyle({ width: "40.0%" });
+  });
+});

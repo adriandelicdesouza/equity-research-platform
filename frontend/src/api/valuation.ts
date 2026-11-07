@@ -11,12 +11,15 @@ import type {
   CandidatesOut,
   CreateProjectRequest,
   CreateRunRequest,
+  CreateScenarioRequest,
   HistoricalContextOut,
   KeySpecOut,
   MetadataRequest,
   Page_AssumptionItemOut_,
   Page_ProjectOut_,
   Page_RunSummaryOut_,
+  Page_SensitivitySummaryOut_,
+  ProbabilitiesRequest,
   PreviewOut,
   ProjectDetailOut,
   ProjectOut,
@@ -27,7 +30,12 @@ import type {
   RunOut,
   RunRequestIn,
   RunSummaryOut,
+  ScenarioMetadataRequest,
   ScenarioOut,
+  ScenarioSummaryOut,
+  SensitivityOut,
+  SensitivityRequestIn,
+  SensitivityVariableOut,
   StatusRequest,
   TraceOut,
 } from "./schema.gen";
@@ -46,6 +54,11 @@ export interface Action<T> extends Omit<ActionOut, "result"> {
 export interface RunCreated {
   existing: boolean;
   run: RunSummaryOut;
+}
+
+export interface SensitivityCreated {
+  existing: boolean;
+  sensitivity: SensitivityOut;
 }
 
 function id(value: string): string {
@@ -124,4 +137,42 @@ export const valuationApi = {
   trace: (runId: string, q: { node?: string; depth?: number } = {}) =>
     request<TraceOut>("GET", `${V}/runs/${id(runId)}/trace`, { query: { ...q } }),
   reproduce: (runId: string) => request<ReproductionOut>("POST", `${V}/runs/${id(runId)}/reproduce`),
+
+  // Phase 5b: scenarios, probabilities, weighted summary, sensitivities.
+  createScenario: (projectId: string, body: CreateScenarioRequest, key?: string) =>
+    request<Action<ScenarioOut>>("POST", `${V}/projects/${id(projectId)}/scenarios`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  updateScenario: (scenarioId: string, body: ScenarioMetadataRequest, key?: string) =>
+    request<Action<ScenarioOut>>("POST", `${V}/scenarios/${id(scenarioId)}/metadata`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  scenarioStatus: (scenarioId: string, to: "archive" | "restore", body: StatusRequest, key?: string) =>
+    request<Action<ScenarioOut>>("POST", `${V}/scenarios/${id(scenarioId)}/${to}`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  setProbabilities: (projectId: string, body: ProbabilitiesRequest, key?: string) =>
+    request<Action<ProjectOut>>("POST", `${V}/projects/${id(projectId)}/probabilities`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  scenarioSummary: (projectId: string, methodology: Methodology) =>
+    request<ScenarioSummaryOut>("GET", `${V}/projects/${id(projectId)}/scenario-summary`, {
+      query: { methodology },
+    }),
+  sensitivityVariables: () => request<SensitivityVariableOut[]>("GET", `${V}/sensitivity-variables`),
+  createSensitivity: (runId: string, body: SensitivityRequestIn, key?: string) =>
+    request<Action<SensitivityCreated>>("POST", `${V}/runs/${id(runId)}/sensitivities`, {
+      json: body,
+      idempotencyKey: key,
+    }),
+  sensitivities: (runId: string) =>
+    request<Page_SensitivitySummaryOut_>("GET", `${V}/runs/${id(runId)}/sensitivities`, {
+      query: { limit: 100 },
+    }),
+  sensitivity: (sensitivityId: string) =>
+    request<SensitivityOut>("GET", `${V}/sensitivities/${id(sensitivityId)}`),
 };

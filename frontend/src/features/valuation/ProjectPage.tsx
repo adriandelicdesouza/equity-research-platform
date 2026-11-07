@@ -21,9 +21,11 @@ import { AssumptionsPanel } from "./AssumptionsPanel";
 import { RunBuilder } from "./RunBuilder";
 import { RunPage } from "./RunPage";
 import { RunsList } from "./RunsList";
+import { ScenariosPanel } from "./ScenariosPanel";
 
 export const PROJECT_TABS = [
   { key: "overview", label: "Overview" },
+  { key: "scenarios", label: "Scenarios" },
   { key: "assumptions", label: "Assumptions" },
   { key: "run", label: "Inputs, preview & run" },
   { key: "runs", label: "Saved runs" },
@@ -70,10 +72,12 @@ export function ProjectPage({ projectId, tab, rest, route }: { projectId: string
           </a>
         ))}
       </nav>
-      {tab === "assumptions" ? (
+      {tab === "scenarios" ? (
+        <ScenariosPanel project={p} />
+      ) : tab === "assumptions" ? (
         <AssumptionsPanel project={p} route={route} />
       ) : tab === "run" ? (
-        <RunBuilder project={p} route={route} />
+        <RunBuilder key={route.query.get("scenario") ?? "base"} project={p} route={route} />
       ) : tab === "runs" && runId ? (
         <RunPage runId={runId} project={p} />
       ) : tab === "runs" ? (

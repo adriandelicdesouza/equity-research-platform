@@ -5,8 +5,9 @@ import { valuationApi } from "../../api/valuation";
 import { Badge, DateTime, ErrorMessage, Hash, KV, Loading, Notice } from "../../components/ui";
 import { href } from "../../lib/router";
 import { DcfOutputs, type Issue, IssueList, type Json, ValidationList } from "./common";
+import { SensitivityPanel } from "./SensitivityPanel";
 
-type Section = "outputs" | "inputs" | "trace";
+type Section = "outputs" | "inputs" | "trace" | "sensitivity";
 
 /** One immutable run: outputs, decisions, inputs with provenance, trace inspector, reproduction. */
 export function RunPage({ runId, project }: { runId: string; project: ProjectDetailOut }) {
@@ -43,9 +44,9 @@ export function RunPage({ runId, project }: { runId: string; project: ProjectDet
         <Reproduce runId={r.id} />
       </section>
       <nav aria-label="Run sections" className="tabs">
-        {(["outputs", "inputs", "trace"] as const).map((s) => (
+        {(["outputs", "inputs", "trace", "sensitivity"] as const).map((s) => (
           <button key={s} type="button" className="tab" aria-pressed={section === s} onClick={() => setSection(s)}>
-            {s === "outputs" ? "Outputs" : s === "inputs" ? "Inputs & provenance" : "Trace inspector"}
+            {s === "outputs" ? "Outputs" : s === "inputs" ? "Inputs & provenance" : s === "trace" ? "Trace inspector" : "Sensitivity"}
           </button>
         ))}
       </nav>
@@ -57,8 +58,10 @@ export function RunPage({ runId, project }: { runId: string; project: ProjectDet
         </section>
       ) : section === "inputs" ? (
         <RunInputs runId={r.id} />
-      ) : (
+      ) : section === "trace" ? (
         <TraceInspector runId={r.id} />
+      ) : (
+        <SensitivityPanel run={r} project={project} />
       )}
     </div>
   );

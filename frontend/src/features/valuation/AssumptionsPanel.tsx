@@ -12,7 +12,7 @@ import { useIdempotency } from "../../components/idempotency";
 import { Badge, DateTime, Dialog, Empty, ErrorMessage, Loading, Notice } from "../../components/ui";
 import { formatPercent, isDecimalString } from "../../lib/decimal";
 import { navigate, type Route, withQuery } from "../../lib/router";
-import { Pct, str } from "./common";
+import { Pct, ScenarioPicker, scenarioName, str } from "./common";
 import { useEditRights } from "./ProjectPage";
 
 type SourceType = "analyst" | "rate_observation" | "reference_value";
@@ -98,10 +98,21 @@ export function toChange(spec: KeySpecOut, period: number | null, d: Draft, driv
 export function AssumptionsPanel({ project, route }: { project: ProjectDetailOut; route: Route }) {
   const qc = useQueryClient();
   const idem = useIdempotency();
-  const rights = useEditRights(project);
+  const projectRights = useEditRights(project);
+  const scenarioParam = route.query.get("scenario");
   const method = (route.query.get("method") as Methodology | null) ?? "dcf_fcff";
-  const scenario = project.scenarios.find((s) => s.kind === "base") ?? project.scenarios[0];
+  // Inline (not selectedScenario) so the React Compiler can prove `route` is not mutated.
+  const scenario =
+    project.scenarios.find((x) => x.id === scenarioParam) ??
+    project.scenarios.find((x) => x.kind === "base") ??
+    project.scenarios[0];
   const scenarioId = scenario?.id ?? "";
+  const archived = !!scenario && scenario.status !== "active";
+  const rights = {
+    ...projectRights,
+    canEdit: projectRights.canEdit && !archived,
+    reason: projectRights.reason ?? (archived ? "The scenario is archived." : null),
+  };
   const keys = useQuery({ queryKey: ["valuation", "keys"], queryFn: valuationApi.keys, staleTime: Infinity });
   const state = useQuery({
     queryKey: ["valuation", "assumptions", scenario?.id, method],
@@ -159,7 +170,8 @@ export function AssumptionsPanel({ project, route }: { project: ProjectDetailOut
   const perYear = specs.filter((k) => k.per_period);
   const single = specs.filter((k) => !k.per_period && k.kind !== "json");
   const lists = specs.filter((k) => k.kind === "json");
-  const suggested = s.items.filter((i) => i.status === "suggested");
+  const suggested = s.items.filter((i) => i.status === "suggested" && !i.inherited_from);
+  const inherited = s.items.filter((i) => i.inherited_from).length;
   const edit = (key: string, period: number | null, patch: Partial<Draft>) =>
     setDrafts((d) => ({ ...d, [ident(key, period)]: { ...d[ident(key, period)], ...patch } }));
   const draftCount = Object.keys(drafts).length;
@@ -191,10 +203,18 @@ export function AssumptionsPanel({ project, route }: { project: ProjectDetailOut
             ))}
           </select>
         </label>
+        <ScenarioPicker project={project} route={route} value={scenario.id} />
         <span className="muted small">
           Scenario {scenario.name} · revision {s.scenario_revision} · ratios are fractions (5% = 0.05)
         </span>
       </div>
+      {scenario.status !== "active" && <Notice tone="warn">This scenario is archived: read-only.</Notice>}
+      {inherited > 0 && (
+        <Notice>
+          {inherited} value(s) are inherited from {scenarioName(project, scenario.parent_scenario_id)} (marked
+          “inherited”). Entering a value here overrides it for this scenario only; clearing hides it.
+        </Notice>
+      )}
       {!rights.canEdit && <Notice tone="warn">Read-only: {rights.reason}</Notice>}
       {s.missing_required.length > 0 ? (
         <Notice tone="warn">
@@ -264,6 +284,7 @@ export function AssumptionsPanel({ project, route }: { project: ProjectDetailOut
                             <span className="small muted">{formatPercent(value, 2)}</span>
                           )}
                           {item?.status === "suggested" && <Badge value="suggested" tone="warn" />}
+                          {item?.inherited_from && <Badge value="inherited" tone="neutral" />}
                         </td>
                       );
                     })}
@@ -406,6 +427,7 @@ function SingleRow({
         {item ? (
           <>
             <Badge value={item.status} tone={item.status === "approved" ? "good" : "warn"} />{" "}
+            {item.inherited_from && <Badge value="inherited" tone="neutral" />}{" "}
             <span className="small">{sourceSummary(item.source)}</span>
           </>
         ) : (

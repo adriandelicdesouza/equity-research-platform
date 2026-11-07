@@ -4,8 +4,10 @@
 // from the server's authoritative engine run (D25).
 
 import type { ReactNode } from "react";
+import type { ProjectDetailOut, ScenarioOut } from "../../api/schema.gen";
 import { Badge, KV } from "../../components/ui";
 import { formatDecimal, formatPercent, isDecimalString } from "../../lib/decimal";
+import { navigate, type Route, withQuery } from "../../lib/router";
 
 export type Json = Record<string, unknown>;
 
@@ -236,5 +238,36 @@ export function ValidationList({ checks }: { checks: Json[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The scenario chosen in the route (`?scenario=<id>`), falling back to the base scenario.
+ * Archived scenarios stay selectable for reading; the server refuses changes and runs. */
+export function selectedScenario(project: ProjectDetailOut, wanted: string | null): ScenarioOut | undefined {
+  return (
+    project.scenarios.find((s) => s.id === wanted) ??
+    project.scenarios.find((s) => s.kind === "base") ??
+    project.scenarios[0]
+  );
+}
+
+export function scenarioName(project: ProjectDetailOut, scenarioId: string | null | undefined): string {
+  return project.scenarios.find((s) => s.id === scenarioId)?.name ?? "another scenario";
+}
+
+export function ScenarioPicker({ project, route, value }: { project: ProjectDetailOut; route: Route; value: string }) {
+  if (project.scenarios.length < 2) return null;
+  return (
+    <label>
+      Scenario{" "}
+      <select value={value} onChange={(e) => navigate(withQuery(route, { scenario: e.target.value }))}>
+        {project.scenarios.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name} ({s.kind}
+            {s.status !== "active" ? ", archived" : ""})
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
