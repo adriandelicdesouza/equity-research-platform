@@ -22,6 +22,17 @@ class Permission(StrEnum):
     SYSTEM_CONFIGURE = "system:configure"
     DATA_MANAGE = "data:manage"
     USER_MANAGE = "user:manage"
+    # Workflow permissions whose role assignment awaits the owner's decision (P15, D60).
+    # They exist so routes can name them, but no role holds them until approved.
+    DATA_IMPORT = "data:import"
+    DATASET_LOCK = "dataset:lock"
+
+
+# Not granted to any role — not even admin — until the owner approves the assignment (P15).
+# Granting one is a reviewed code change here (and the proposal in D60 says to whom).
+PENDING_APPROVAL: frozenset[Permission] = frozenset(
+    {Permission.DATA_IMPORT, Permission.DATASET_LOCK}
+)
 
 
 class Role(StrEnum):
@@ -38,7 +49,7 @@ _READ = {
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
-    Role.ADMIN: frozenset(Permission),
+    Role.ADMIN: frozenset(Permission) - PENDING_APPROVAL,
     Role.ANALYST: frozenset(
         _READ
         | {

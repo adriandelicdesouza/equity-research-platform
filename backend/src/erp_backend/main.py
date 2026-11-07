@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 
 from erp_backend import __version__
-from erp_backend.api import admin, auth, data, health
+from erp_backend.api import actions, admin, auth, data, health
 from erp_backend.auth.ratelimit import SlidingWindowLimiter
 from erp_backend.config import Settings, get_settings
 from erp_backend.errors import install_error_handlers
@@ -32,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(auth.router)
     api.include_router(admin.router)
     api.include_router(data.router)
+    api.include_router(actions.router)
     app.include_router(api)
     # Middleware: last added runs first.
     app.add_middleware(OriginCheckMiddleware, allowed_origins=settings.allowed_origin_set)

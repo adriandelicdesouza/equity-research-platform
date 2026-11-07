@@ -1,5 +1,5 @@
 from erp_backend.auth.deps import POLICY_ATTR
-from erp_backend.auth.rbac import ROLE_PERMISSIONS, Permission, Role
+from erp_backend.auth.rbac import PENDING_APPROVAL, ROLE_PERMISSIONS, Permission, Role
 from erp_backend.main import create_app
 from erp_backend.models import AuditEvent
 from fastapi.routing import APIRoute
@@ -41,7 +41,10 @@ def test_every_route_declares_exactly_one_access_policy() -> None:
 
 
 def test_role_permission_matrix() -> None:
-    assert ROLE_PERMISSIONS[Role.ADMIN] == frozenset(Permission)
+    assert ROLE_PERMISSIONS[Role.ADMIN] == frozenset(Permission) - PENDING_APPROVAL
+    # Pending workflow permissions (P15) are held by no role until the owner approves.
+    assert {Permission.DATA_IMPORT, Permission.DATASET_LOCK} == PENDING_APPROVAL
+    assert not any(PENDING_APPROVAL & perms for perms in ROLE_PERMISSIONS.values())
     assert Permission.USER_MANAGE not in ROLE_PERMISSIONS[Role.ANALYST]
     reviewer = ROLE_PERMISSIONS[Role.REVIEWER]
     assert all(p.value.endswith(":read") for p in reviewer)

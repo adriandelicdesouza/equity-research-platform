@@ -16,7 +16,7 @@ from typing import Annotated, Any
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
-from erp_backend.auth.rbac import Permission, permissions_for
+from erp_backend.auth.rbac import PENDING_APPROVAL, Permission, permissions_for
 from erp_backend.auth.sessions import resolve_session
 from erp_backend.config import Settings, get_settings
 from erp_backend.db import get_db
@@ -74,6 +74,13 @@ def require(permission: Permission) -> Callable[..., AuthContext]:
     def dependency(request: Request, db: DbSession, settings: AppSettings) -> AuthContext:
         ctx = _authenticate(request, db, settings)
         if permission not in ctx.permissions:
+            if permission in PENDING_APPROVAL:
+                raise ApiError(
+                    403,
+                    "pending_approval",
+                    f"Permission '{permission}' is not assigned to any role yet; the role "
+                    "assignment awaits the owner's approval (P15).",
+                )
             raise ApiError(403, "forbidden", f"Permission '{permission}' required.")
         return ctx
 

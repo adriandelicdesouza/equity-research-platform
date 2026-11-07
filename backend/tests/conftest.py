@@ -172,3 +172,15 @@ def login(client: TestClient, username: str, password: str = PASSWORD) -> dict[s
     assert r.status_code == 200, r.text
     body: dict[str, object] = r.json()
     return body
+
+
+@pytest.fixture
+def wf_client(client: TestClient, db: Session) -> TestClient:
+    """``client`` whose read-only data sessions use the test session too (workflow tests)."""
+    from erp_backend.readonly import read_only_db
+
+    def same_session() -> Iterator[Session]:
+        yield db
+
+    client.app.dependency_overrides[read_only_db] = same_session  # type: ignore[attr-defined]
+    return client

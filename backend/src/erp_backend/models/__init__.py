@@ -1,6 +1,6 @@
 """ORM models. Import all model modules here so Alembic sees the full metadata."""
 
-from erp_backend.models.audit import AuditEvent
+from erp_backend.models.audit import ApiAction, AuditEvent
 from erp_backend.models.auth import Role, User, UserRole, UserSession
 from erp_backend.models.base import Base
 from erp_backend.models.fin import (
@@ -36,6 +36,7 @@ from erp_backend.models.source import (
 )
 
 __all__ = [
+    "ApiAction",
     "AuditEvent",
     "Base",
     "Company",
