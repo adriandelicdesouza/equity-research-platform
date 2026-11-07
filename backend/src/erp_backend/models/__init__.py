@@ -24,7 +24,12 @@ from erp_backend.models.market import (
     RateSeries,
     Security,
 )
-from erp_backend.models.ref import ReferenceDataset, ReferenceValue, StandardLineItem
+from erp_backend.models.ref import (
+    ReferenceDataset,
+    ReferenceValue,
+    StandardLineItem,
+    ValuationBlock,
+)
 from erp_backend.models.source import (
     Filing,
     Provider,
@@ -34,9 +39,19 @@ from erp_backend.models.source import (
     SourceImport,
     StatementImportValue,
 )
+from erp_backend.models.val import (
+    AssumptionRevision,
+    RunDecision,
+    RunInput,
+    RunTrace,
+    Scenario,
+    ValuationProject,
+    ValuationRun,
+)
 
 __all__ = [
     "ApiAction",
+    "AssumptionRevision",
     "AuditEvent",
     "Base",
     "Company",
@@ -61,6 +76,10 @@ __all__ = [
     "ReferenceValue",
     "ReportedFact",
     "Role",
+    "RunDecision",
+    "RunInput",
+    "RunTrace",
+    "Scenario",
     "SecTicker",
     "Security",
     "SourceImport",
@@ -70,4 +89,7 @@ __all__ = [
     "UserRole",
     "UserSession",
     "ValidationResult",
+    "ValuationBlock",
+    "ValuationProject",
+    "ValuationRun",
 ]

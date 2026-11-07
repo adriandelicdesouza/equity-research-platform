@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -19,7 +20,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from erp_backend.models.base import Base
@@ -90,3 +91,23 @@ class StandardLineItem(Base):
     is_subtotal: Mapped[bool] = mapped_column(Boolean, nullable=False)
     derived_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ValuationBlock(Base):
+    """One classification block (classification × methodology) of a block version
+    (append-only; migration 0017, design §7). Loaded from ``mappings/valuation-blocks/``."""
+
+    __tablename__ = "valuation_blocks"
+    __table_args__ = {"schema": "ref"}  # noqa: RUF012
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    block_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    classification: Mapped[str] = mapped_column(String(32), nullable=False)
+    methodology: Mapped[str] = mapped_column(String(32), nullable=False)
+    policy: Mapped[str] = mapped_column(String(32), nullable=False)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    definition_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

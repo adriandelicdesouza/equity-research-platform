@@ -1,0 +1,85 @@
+# Valuation classification blocks, version v1 (M3 phase 5; docs/architecture/valuation-api.md §7).
+#
+# A block says how one valuation methodology may be applied to companies of one financial
+# classification (D24, D53): whether it is permitted, which warnings the analyst must
+# acknowledge (with a reason) before a run, which standardized line items feed which engine
+# input, and which assumptions the methodology needs.
+#
+# This file is FROZEN once migration 0017 has loaded it: the migration verifies its SHA-256.
+# Changes go into a new version file loaded by a new migration. Runs record the block id,
+# version and definition hash they used.
+#
+# Fields
+#   policy                 permitted | permitted_with_warnings | blocked
+#   acknowledgements       engine warning codes that need an acknowledgement + reason
+#   line_items             engine input -> signed list of standard line-item codes at the
+#                          balance-sheet date B (a signed sum: data, not a formula language).
+#                          Every component must be an OK value in the pinned dataset; a missing
+#                          component is never zero (the analyst overrides it with a value or
+#                          declares it not applicable, with a reason).
+#   lease_line_items       extra bridge inputs per supported lease treatment (D22)
+#   required_assumptions   assumption keys the methodology always needs; conditional keys
+#                          (e.g. RONIC for the value-driver terminal form) are added by the
+#                          assumption registry in code.
+#
+# The engine's own policy gate (erp_engine.classification) stays authoritative; a test keeps
+# the policies and acknowledgement codes here equal to it.
+
+version: v1
+
+common:
+  fcff_line_items: &fcff_items
+    operating.revenue_0: [+IS.REVENUE]
+    operating.nwc_0: [+BS.RECEIVABLES, +BS.INVENTORY, -BS.PAYABLES]
+    bridge.cash: [+BS.CASH]
+    bridge.short_term_investments: [+BS.ST_INVESTMENTS]
+    bridge.debt: [+BS.ST_DEBT, +BS.LT_DEBT]
+    bridge.preferred: [+BS.PREFERRED_EQUITY]
+    bridge.nci: [+BS.NCI]
+    shares.basic: [+BS.SHARES_OUTSTANDING]
+  fcfe_line_items: &fcfe_items
+    operating.revenue_0: [+IS.REVENUE]
+    operating.nwc_0: [+BS.RECEIVABLES, +BS.INVENTORY, -BS.PAYABLES]
+    financing.debt_0: [+BS.ST_DEBT, +BS.LT_DEBT]
+    financing.cash_0: [+BS.CASH]
+    shares.basic: [+BS.SHARES_OUTSTANDING]
+  lease_line_items: &lease_items
+    none: {}
+    ifrs16_as_debt:
+      bridge.lease_liabilities: [+BS.LEASE_LIAB_CURRENT, +BS.LEASE_LIAB_NONCURRENT]
+    asc842_as_operating:
+      bridge.finance_lease_liabilities: [+BS.FINANCE_LEASE_LIAB_CURRENT, +BS.FINANCE_LEASE_LIAB_NONCURRENT]
+  fcff_assumptions: &fcff_required
+    [horizon_years, convention, lease_treatment, revenue_growth, ebit_margin, tax_rate, da_pct,
+     capex_pct, nwc_pct, terminal_form, terminal_growth, risk_free_rate, erp_basis,
+     beta_method, marginal_tax_rate, cost_of_debt_method, capital_structure_basis]
+  fcfe_assumptions: &fcfe_required
+    [horizon_years, convention, revenue_growth, ebit_margin, tax_rate, da_pct, capex_pct,
+     nwc_pct, terminal_form, terminal_growth, risk_free_rate, erp_basis, beta_method,
+     marginal_tax_rate, cost_of_debt_method, debt_forecast, cash_forecast, cash_yield]
+
+blocks:
+  - {classification: non_financial, methodology: dcf_fcff, policy: permitted, acknowledgements: [],
+     line_items: *fcff_items, lease_line_items: *lease_items, required_assumptions: *fcff_required}
+  - {classification: non_financial, methodology: dcf_fcfe, policy: permitted, acknowledgements: [],
+     line_items: *fcfe_items, lease_line_items: {none: {}}, required_assumptions: *fcfe_required}
+  - {classification: reit, methodology: dcf_fcff, policy: permitted_with_warnings,
+     acknowledgements: [reit_fair_value_gains],
+     line_items: *fcff_items, lease_line_items: *lease_items, required_assumptions: *fcff_required}
+  - {classification: reit, methodology: dcf_fcfe, policy: permitted_with_warnings,
+     acknowledgements: [reit_fair_value_gains],
+     line_items: *fcfe_items, lease_line_items: {none: {}}, required_assumptions: *fcfe_required}
+  - {classification: asset_manager_broker, methodology: dcf_fcff, policy: permitted_with_warnings,
+     acknowledgements: [client_cash_excluded],
+     line_items: *fcff_items, lease_line_items: *lease_items, required_assumptions: *fcff_required}
+  - {classification: asset_manager_broker, methodology: dcf_fcfe, policy: permitted_with_warnings,
+     acknowledgements: [client_cash_excluded],
+     line_items: *fcfe_items, lease_line_items: {none: {}}, required_assumptions: *fcfe_required}
+  - {classification: bank, methodology: dcf_fcff, policy: blocked}
+  - {classification: bank, methodology: dcf_fcfe, policy: blocked}
+  - {classification: insurer, methodology: dcf_fcff, policy: blocked}
+  - {classification: insurer, methodology: dcf_fcfe, policy: blocked}
+  - {classification: specialty_lender, methodology: dcf_fcff, policy: blocked}
+  - {classification: specialty_lender, methodology: dcf_fcfe, policy: blocked}
+  - {classification: investment_holding, methodology: dcf_fcff, policy: blocked}
+  - {classification: investment_holding, methodology: dcf_fcfe, policy: blocked}
