@@ -6,7 +6,7 @@ PY    := $(REPO)/.venv/bin/python
 DEV   := docker compose --env-file .env.dev -f infra/compose.yaml -f infra/compose.dev.yaml
 
 .PHONY: help tools setup env-dev secrets-dev data-dev up-dev down-dev ps-dev logs-dev \
-        build-dev create-admin-dev enqueue-ping-dev lint typecheck test test-backend test-engine test-frontend \
+        build-dev create-admin-dev enqueue-ping-dev api-types lint typecheck test test-backend test-engine test-frontend \
         check measure-memory
 
 help:
@@ -51,6 +51,9 @@ create-admin-dev:  ## creates 'admin' with secrets/dev/initial_admin_password
 	$(DEV) run --rm --no-deps -v $(REPO)/secrets/dev/initial_admin_password:/run/secrets/initial_admin_password:ro \
 	  api python -m erp_backend.cli create-user --username admin --display-name "Administrator" \
 	  --role admin --password-file /run/secrets/initial_admin_password
+
+api-types:        ## regenerate frontend/src/api/schema.gen.ts from the backend OpenAPI schema (D61)
+	$(PY) frontend/scripts/gen_api_types.py
 
 lint:
 	$(UV) run --all-packages ruff check engine backend

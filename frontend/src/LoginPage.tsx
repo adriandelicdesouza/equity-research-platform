@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { ApiError } from "./api";
+import { ApiError } from "./api/client";
 
 interface Props {
   onLogin: (username: string, password: string) => Promise<unknown>;
