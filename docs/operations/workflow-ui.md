@@ -29,6 +29,8 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 | FX rates | `#/rates/fx?base=&quote=&provider=&start=&end=&revisions=&sort=&offset=` | `GET /fx/rates` |
 | Imports | `#/imports`, `#/imports/{id}`, `#/imports/preview` | `GET /imports`, `/imports/{id}`; `POST /imports/{kind}/validate`, `POST /imports/{kind}` |
 | Action history | `#/actions`, `#/actions/{id}` | `GET /actions`, `/actions/{id}` |
+| Valuation projects | `#/valuations?status=&owner=me`, `#/companies/{id}/valuation` | `GET/POST /valuation/projects` |
+| Valuation project | `#/valuations/{id}[/assumptions\|run\|runs]`, `#/valuations/{id}/runs/{runId}` | `/valuation/…` (see `valuation-api.md`) |
 | System | `#/system` | `GET /health`, `/auth/me` |
 
 ## Workflows

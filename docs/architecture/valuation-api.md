@@ -1,9 +1,23 @@
 # Valuation API design (M3 phase 5)
 
-**Status: PROPOSED — NOT APPROVED (pending decision P16).** Nothing in this document is implemented. No migration, route, permission grant or behaviour change exists for it. Approval questions: §12.
+**Status: APPROVED (P16 resolved, 2026-11-07) and IMPLEMENTED (Phase 5, Session 14) — decision D62.** Phase 5b (§6, §9.5) is designed but not implemented. Operations guide (endpoints, codes, data requirements): `docs/operations/valuation-api.md`.
 
-**Written:** 2026-11-07, Session 13, against `m2-ingestion` @ `771bb0b` (Alembic `0016`, engine `0.1.0`).
+**Written:** 2026-11-07, Session 13, against `m2-ingestion` @ `771bb0b` (Alembic `0016`, engine `0.1.0`). Implemented in Session 14 (Alembic `0017`).
 **Builds on:** Blueprint §3.3–§3.4, §6, §7, §8, §10, §11.2, §14.1 (M3/M4); D9, D10, D14, D18–D27, D35–D39, D50–D53, D58–D61; `docs/methodology/dcf.md`; `docs/operations/workflow-api.md`.
+
+## 0. Implementation notes (Session 14)
+
+The approved decisions (§12) are implemented as specified. Where the implementation refines the proposal:
+
+- **Run decisions table:** `val.run_decisions` (append-only) records every classification acknowledgement, dataset-check override, input override and administrator override with user, time, reason and run (approved qualification 3). It was not in the §10 table list.
+- **Sensitivity table not created:** `val.sensitivity_runs` belongs to Phase 5b and will come with its own migration.
+- **Extra read endpoint:** `GET /valuation/assumption-keys` exposes the key registry (types, units, ranges, sources) so the UI builds its forms from the server. 24 routes in total.
+- **Lease treatments:** Phase 5 supports `none`, `ifrs16_as_debt` and `asc842_as_operating` (FCFF), the combinations that need no per-year lease forecasts; FCFE supports `none`.
+- **Market-value weights:** equity = market price × basic shares at B (not diluted shares); preferred equity with market weights is refused (`unsupported_capital_structure`: no cost of preferred in Phase 5).
+- **Roll-forward:** dividends between B and V are not deducted; a run with V > B carries the warning `dividends_not_modelled`.
+- **Identity (approved qualification 2):** the content identity is the SHA-256 of the canonical input document, which includes the project, scenario and **scenario revision**, methodology, method version, dataset identity, every input with provenance, settings, decisions and the engine version. Unique per (project, input hash, engine version).
+- **Reproduction (qualification 4):** a pure `compute(document)` function serves previews, runs and reproduction, so reproduction cannot read current market data or newer reference versions.
+- **Error envelope:** valuation refusals add an optional `details` list to the existing `{"error": {...}}` envelope; `ApiError` gained the same optional field.
 
 ## 1. Scope and principles
 
@@ -220,7 +234,7 @@ blocks:
 
 ## 8. Permissions (F)
 
-**Finding.** `valuation:read` and `valuation:write` are **not new**: they were defined in `auth/rbac.py` in M0 (`8b3606d`) and are already mapped — admin all, analyst read + write, reviewer read. **No route checks them today**, so the mapping currently has no effect. This design does not change `rbac.py`. Whether the existing mapping is confirmed as the valuation permission model, or the two permissions are moved to `PENDING_APPROVAL` until Phase 5 ships, is approval question Q2.
+**Finding.** `valuation:read` and `valuation:write` are **not new**: they were defined in `auth/rbac.py` in M0 (`8b3606d`) and are already mapped — admin all, analyst read + write, reviewer read. Before Phase 5 no route checked them. `rbac.py` is unchanged. **Q2 (approved):** the existing mapping is kept and now enforced on every valuation route.
 
 | Capability | Permission | admin | analyst | reviewer |
 |---|---|---|---|---|
@@ -368,29 +382,33 @@ Migration `0017` (proposed): schema `val`, one `ref` table, triggers. All amount
 
 | Item | Blocks implementation? | What it blocks |
 |---|---|---|
-| **P16 — approval of this design** (incl. Q1–Q12) | **Yes: the only hard blocker.** No migration, route or UI work starts before it. | Everything in §13 |
+| **P16 — approval of this design** (incl. Q1–Q12) | **Resolved 2026-11-07** (D62) | — |
 | P15 — `dataset:lock` / `data:import` role assignment | No (backend work and tests use `erp_test`) | The **in-app** path to a lockable dataset; until approved, a dataset can be locked only by the owner via the CLI. Phase 5 acceptance on real data needs at least one locked dataset |
 | P15 implementation + raw-archive mount on the API container | No | In-app file ingestion (TSX/imported companies, Damodaran tables, price CSVs) |
 | P9 — first live provider fetch | No | Stored Rf/FX/prices from providers; until then Rf is an analyst value with a written source and prices/FX come from file imports |
 | P13 — provider gate for file imports | No | Same as today: file imports run with the provider disabled |
 | D28 frontend libraries (unapproved) | No | Charts and editable grids; Phase 5 UI uses the D61 approach (tables, plain forms) |
 
-**Approval questions:**
+**Approved decisions (owner, 2026-11-07; binding):**
 
-- **Q1** Approve this design as the Phase 5 basis (schema `val`, migration `0017`, endpoints in §9, immutable runs).
-- **Q2** `valuation:read`/`valuation:write` are already mapped since M0 (admin all; analyst read + write; reviewer read) but unused. Confirm that mapping, or move both to `PENDING_APPROVAL` until Phase 5 ships.
-- **Q3** Ownership: owner-only edits with administrator override (proposed), or any analyst may edit any project.
-- **Q4** Allow pinning a **draft** dataset for previews (runs still require a locked one)? Proposed: yes — it lets the workflow be used before P15.
-- **Q5** FX: allow the exact reciprocal of a stored rate at the input boundary (rule recorded), or require a stored rate in the needed direction? (D58 forbids inversion in storage and display only.)
-- **Q6** Staleness defaults: 7 calendar days for price/Rf/FX, 13 months for Damodaran editions; look-ahead is an error.
-- **Q7** Store traces in Postgres (`val.run_traces`, JSONB) instead of the Blueprint's zstd file under `DATA_ROOT` — keeps runs inside the database backup and needs no API-container mount.
-- **Q8** Content idempotency: identical input document + engine version returns the existing run.
-- **Q9** Scope cut: Phase 5 = base scenario, FCFF/FCFE, constant WACC with analyst or bottom-up beta, no stub; Phase 5b = scenarios, probabilities, sensitivity, assumption impact; regression beta when prices exist.
-- **Q10** Dilutive instruments entered per scenario as assumptions (no `fin.capital_instruments` table yet), or build the Blueprint's company-level register first.
-- **Q11** Warning classes (REIT, asset manager/broker): require an acknowledgement with reason before a run (proposed), or record the warning only.
-- **Q12** Runs refused when the dataset has failed error-severity checks on the periods used, unless overridden with reason (proposed), or warnings only.
+| # | Decision |
+|---|---|
+| Q1 | Design approved: `val` schema, migration `0017`, §9 endpoints, immutable runs |
+| Q2 | Keep the M0 mapping: admin and analyst read/write, reviewer read-only; enforced on every route |
+| Q3 | Owner controls edits; an administrator override requires a recorded reason |
+| Q4 | Draft datasets for previews; saved runs need a locked dataset |
+| Q5 | Exact reciprocal FX at the input boundary, original direction and provenance preserved; never cross rates or change stored observations |
+| Q6 | Staleness: 7 calendar days for prices, risk-free rates and FX; 13 months for Damodaran editions; look-ahead is an error |
+| Q7 | Traces in PostgreSQL JSONB (`val.run_traces`) |
+| Q8 | Identical canonical inputs and engine version return the existing run |
+| Q9 | Phase 5: base scenario, FCFF/FCFE, constant WACC, analyst or bottom-up beta, no stub. Phase 5b: scenarios, probabilities, sensitivities, assumption impact, regression beta |
+| Q10 | Dilutive instruments are scenario-level assumptions; the company-level register is deferred |
+| Q11 | REIT and financial-institution (asset manager/broker) warnings need an acknowledgement with reason |
+| Q12 | Error-severity check failures for the periods used refuse a run unless overridden with a reason |
 
-## 13. Phase 5 implementation sequence (after approval)
+Qualifications: (1) the reciprocal calculation is a trace node and no derived rate is written to `market.fx_rates`; (2) the identity includes every output-determining input, the project context, the engine version and configuration, and runs are never shared across projects; (3) overrides and acknowledgements record user, time, reason and run; (4) reproduction uses only the immutable stored inputs and the recorded engine version.
+
+## 13. Phase 5 implementation sequence (completed in Session 14; step 8 deferred)
 
 Each stage: tests first-class, `make check`, commit by explicit path.
 

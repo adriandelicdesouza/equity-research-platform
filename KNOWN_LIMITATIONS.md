@@ -309,12 +309,24 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Synchronous actions:** verify and builds block their dialog for a few seconds; there is no progress indicator beyond "Working…".
 - **Session expiry** returns to sign-in and loses unsaved form input.
 
-## 4q. Valuation workflow (M3 phase 5: design only, Session 13)
+## 4q. Valuation workflow (M3 phase 5, Session 14; D62)
 
-- **Not implemented:** no valuation project, run, scenario or sensitivity API, schema or UI exists. The proposed design (`docs/architecture/valuation-api.md`) awaits approval (P16).
-- **Permissions already mapped but unused:** `valuation:read` (admin, analyst, reviewer) and `valuation:write` (admin, analyst) have been granted in `auth/rbac.py` since M0, but no route checks them. Their confirmation is approval question Q2 of the design.
-- **Inputs the design depends on are largely unavailable in the dev database:** runs need a locked dataset, and locking via the API awaits P15 (the CLI is the owner's route); there are no rate observations, FX rates or prices (providers disabled, P9) and no Damodaran reference datasets (Session 12 state). Until then, a valuation could use only analyst-entered market inputs with written sources.
-- **Data structures the Blueprint lists for valuation do not exist yet:** `fin.capital_instruments`, `fin.share_counts`, `fin.analyst_adjustments`. The design proposes run-level overrides and per-scenario instrument assumptions instead (Q10).
+- **Phase 5b, not implemented:** scenarios other than the base (inheritance, bull/bear/custom, probability weights), sensitivity grids and tornado, assumption impact on value (`valuation_impact` in audit events stays empty), regression beta.
+- **Methodology scope (Q9):**
+  - constant WACC (no per-period vector); beta analyst-entered or bottom-up; one CRP country per scenario;
+  - no stub periods: the balance-sheet date is a fiscal year-end;
+  - leases: `none`, `ifrs16_as_debt`, `asc842_as_operating` (FCFF only); the other combinations need per-year lease forecasts and are refused;
+  - market-value WACC weights use price × basic shares at B (not diluted) and book debt; preferred equity with market weights is refused;
+  - dividends between the balance-sheet and valuation dates are not deducted in the roll-forward (warning `dividends_not_modelled`).
+- **Inputs:**
+  - every dataset input must exist at the balance-sheet date; missing components need a reasoned override (by design). In the dev data, Shopify's latest draft lacks debt, NCI, preferred and the point-in-time share count at FY-end, so an analyst must supply or declare them;
+  - dilutive instruments are scenario assumptions (Q10); there is no company-level register (`fin.capital_instruments`) or point-in-time share-count table (`fin.share_counts`) yet;
+  - no stored rate observations, prices or FX in the dev database (providers disabled, P9): the risk-free rate is entered by an analyst with a written source and date;
+  - reference values and rate observations are named by id in the assumption form; there is no record picker yet.
+- **Dev database:** no run can be saved yet — no dataset is locked (API locking awaits P15; the CLI is the owner's route) and no company has a confirmed classification. The Session 14 integrated check left one archived project ("Integration check — Session 13 (not an analyst valuation)", 34 assumption revisions, 0 runs); projects cannot be deleted by design.
+- **Identity and reproduction:** the content identity includes the scenario revision, so re-entering identical values after another change gives a new run. Exact re-execution is guaranteed on the current engine version only (old engine versions are not installed side by side); after an upgrade, reproduction lists the differences.
+- **Historical context** is per fiscal year only; NWC there and in the model is receivables + inventory − payables.
+- **UI:** tables only (no charts; D28 libraries unapproved); the assumption editor edits the base scenario; no Playwright suite (component tests mock `fetch`; the integrated check was scripted over HTTPS).
 
 ## 5. Unresolved items
 

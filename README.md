@@ -31,11 +31,11 @@ The project is under active development. **Implemented and tested:**
 - **Versioned financial datasets**: company-specific fiscal periods (52/53-week years, quarters, H1/9M), standardized values with full provenance, derived quarters (incl. quarterly cash flows), gross profit, EBITDA, free cash flow and LTM values, accounting integrity checks on every build (balance, subtotals, cash roll-forward, cross-statement, shares/EPS, completeness), data-conflict detection with materiality thresholds and an audited resolve/override workflow that must be completed before locking, draft → locked lifecycle enforced in the database, and byte-identical rebuild verification.
 - **Standardization mapping (v1)**: versioned YAML (`mappings/`) mapping US GAAP and IFRS concepts onto 81 standard line items, with per-period concept fallback, sign normalization and a read-only coverage report (`sec-standardize-report`).
 - **Read and workflow APIs (`/api`)**: read-only data API (D59) and audited, CSRF-protected workflow actions (D60).
-- **Frontend (`frontend/`)**: React/TypeScript research workspace (D61): company search and workspace, financial statement grid with per-value provenance, conflict review and resolution, classification confirmation, listings (prices, corporate actions, trading currency, registration), reference data, interest-rate and FX history (read-only), import preview, dataset workflow controls and action history. Guide: `docs/operations/workflow-ui.md`.
+- **Frontend (`frontend/`)**: React/TypeScript research workspace (D61): company search and workspace, financial statement grid with per-value provenance, conflict review and resolution, classification confirmation, listings (prices, corporate actions, trading currency, registration), reference data, interest-rate and FX history (read-only), import preview, dataset workflow controls and action history; **valuation projects** (assumptions, input selection, server preview, immutable FCFF/FCFE runs, trace and reproduction). Guides: `docs/operations/workflow-ui.md`, `docs/operations/valuation-api.md`.
 
 **Not yet available:**
-- The valuation engine isn't yet exposed through the API or user interface.
-- Market and rates data providers (disabled, pending P9), valuation, scenario and sensitivity UI.
+- Scenarios beyond the base case, probability weighting and sensitivity grids (valuation Phase 5b; the base-case FCFF/FCFE workflow is available).
+- Market and rates data providers (disabled, pending P9).
 - Dataset locking and file ingestion await the owner's permission decision (P15).
 
 ## Roadmap
@@ -61,7 +61,7 @@ Browser ──► Caddy (static frontend, TLS, security headers)
 ```
 
 - **Python 3.12, FastAPI, SQLAlchemy/Alembic, PostgreSQL 17, procrastinate** (job queue), **React 19 + TypeScript + Vite**, **Docker Compose**.
-- **Design notes:** `TECHNICAL_BLUEPRINT.md` (architecture), `DECISIONS.md` (decision log), `KNOWN_LIMITATIONS.md` (data, methodology and operational limitations), `docs/methodology/dcf.md` (valuation conventions), `docs/architecture/valuation-api.md` (proposed valuation API, not approved).
+- **Design notes:** `TECHNICAL_BLUEPRINT.md` (architecture), `DECISIONS.md` (decision log), `KNOWN_LIMITATIONS.md` (data, methodology and operational limitations), `docs/methodology/dcf.md` (valuation conventions), `docs/architecture/valuation-api.md` (valuation design, D62) and `docs/operations/valuation-api.md` (valuation API and UI).
 
 ## Getting started (development)
 
