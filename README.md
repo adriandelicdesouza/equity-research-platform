@@ -30,11 +30,13 @@ The project is under active development. **Implemented and tested:**
 - **Financial-business classification**: bank / insurer / specialty lender / REIT / asset manager-broker / investment holding suggested from SIC and XBRL balance-sheet evidence, confirmed by the analyst (the valuation engine blocks DCF for banks, insurers, lenders and holdings).
 - **Versioned financial datasets**: company-specific fiscal periods (52/53-week years, quarters, H1/9M), standardized values with full provenance, derived quarters (incl. quarterly cash flows), gross profit, EBITDA, free cash flow and LTM values, accounting integrity checks on every build (balance, subtotals, cash roll-forward, cross-statement, shares/EPS, completeness), data-conflict detection with materiality thresholds and an audited resolve/override workflow that must be completed before locking, draft → locked lifecycle enforced in the database, and byte-identical rebuild verification.
 - **Standardization mapping (v1)**: versioned YAML (`mappings/`) mapping US GAAP and IFRS concepts onto 81 standard line items, with per-period concept fallback, sign normalization and a read-only coverage report (`sec-standardize-report`).
-- **Frontend (`frontend/`)**: React/TypeScript shell with authentication.
+- **Read and workflow APIs (`/api`)**: read-only data API (D59) and audited, CSRF-protected workflow actions (D60).
+- **Frontend (`frontend/`)**: React/TypeScript research workspace (D61): company search and workspace, financial statement grid with per-value provenance, conflict review and resolution, import preview, dataset workflow controls and action history. Guide: `docs/operations/workflow-ui.md`.
 
 **Not yet available:**
 - The valuation engine isn't yet exposed through the API or user interface.
-- Market and rates data providers, company workspaces, scenarios and sensitivity UI.
+- Market and rates data providers (disabled, pending P9), valuation, scenario and sensitivity UI.
+- Dataset locking and file ingestion await the owner's permission decision (P15).
 
 ## Roadmap
 

@@ -684,6 +684,23 @@ These refine the approved architecture. None changes an approved methodology dec
   - `dataset:lock` and `data:import` → **pending (P15)**: defined, but in `PENDING_APPROVAL` and granted to **no role, admin included**, so they return `403 pending_approval`. The proposal is in `docs/operations/workflow-api.md`.
 - **API ingestion** also needs the raw archive to be writable in the API container. Until it is, ingestion is refused with `503 archive_unavailable`. The compose file was not changed.
 
+### D61. Workflow UI over the read and actions APIs; no new frontend dependency (§6.2, §10.1–10.3, §18; D28, D59, D60)
+- **Scope (M3 phase 3):** company search and workspace (profile, classification, listings, datasets with check/conflict counts, stored integrity, company-scoped imports), financial statement grid with provenance drill-down, conflict review and resolution, import history and preview with a permission-gated ingestion step, action history, and dataset workflow controls (build, rebuild, verify, discard, lock). Guide: `docs/operations/workflow-ui.md`.
+- **Reuse, nothing parallel:** the existing Vite/React 19/TanStack Query app, cookie session and CSRF token. One request core (`frontend/src/api/client.ts`) adds the CSRF header, `Idempotency-Key`, raw CSV bodies and the error envelope; typed wrappers in `api/endpoints.ts` call only existing D59/D60 routes. No backend behavior changed.
+- **Contract types are generated** from the backend OpenAPI schema by `frontend/scripts/gen_api_types.py` (`make api-types` → `src/api/schema.gen.ts`); `backend/tests/test_frontend_api_types.py` fails when the file is stale. This satisfies D28's "types generated from OpenAPI" without installing `openapi-typescript`. Import preview reports are untyped JSON in OpenAPI and are mirrored by hand in `api/imports.ts`.
+- **D28 libraries deferred, not rejected:** TanStack Router, AG Grid, Tailwind/Radix, react-hook-form/zod and ECharts are not installed (the handoff rule requires approval for new dependencies). Instead:
+  - routing is a ~60-line hash router (`lib/router.ts`): bookmarkable views, no server change;
+  - the statement grid is a semantic HTML table (≤ 60 periods per request), accessible and compatible with the CSP `style-src 'self'` (no inline or injected styles anywhere);
+  - styling is a token stylesheet with light/dark themes.
+  Adopting the D28 libraries later (editable grids, charts in M4+) is a dependency decision for the owner.
+- **Financial display rules:**
+  - amounts stay decimal strings end to end; display scaling and rounding are string arithmetic (`lib/decimal.ts`), never floats; the exact stored value is in every cell's tooltip and in the provenance panel;
+  - monetary and share-count rows scale (units/k/m/bn); per-share rows never do; negatives in parentheses;
+  - every view reads exactly one dataset named in the URL (`?dataset=`); without one, the newest locked (else newest draft) version is proposed and labelled as such; a dataset of another company is refused, never substituted;
+  - provenance kinds (reported, derived, imported, analyst), missing, ambiguous and conflict states are marked per cell.
+- **Authorization:** controls are hidden or disabled from `/auth/me` permissions with a visible reason, for clarity only — the backend enforces every action. `dataset:lock` and `data:import` remain granted to no role (P15); the UI shows lock and ingestion as unavailable and still relays any backend response (403 `pending_approval`, 503 `archive_unavailable`). A 401 anywhere returns to sign-in.
+- **Consequential actions** (resolve, build, rebuild, discard, lock, ingest) require a confirmation dialog; reasons are required where the API requires them. Idempotency keys follow the request fingerprint: a retried identical request replays, a corrected request gets a new key.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

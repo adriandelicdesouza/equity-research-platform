@@ -1,6 +1,6 @@
 # Workflow actions API (M3 phase 2)
 
-Decision D60, pending decision P15. The read-only data API is described in `data-api.md` (D59).
+Decision D60, pending decision P15. The read-only data API is described in `data-api.md` (D59); the UI built on both is described in `workflow-ui.md` (D61).
 
 The API exposes the existing workflow services as authenticated, audited POST actions. No business rule was re-implemented. Each handler validates its request and calls the same service the CLI uses, so these all apply unchanged:
 - reasons;

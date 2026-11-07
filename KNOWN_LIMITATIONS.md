@@ -245,7 +245,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 
 ## 4n. Read-only data API (M3 phase 1, Session 7)
 
-- **Read only:** no workflow actions (imports, dataset lifecycle, conflict resolution, classification, listing registration) and no UI yet.
+- **Read only:** workflow actions are a separate API (§4o); the UI is described in §4p.
 - **Authentication:** cookie sessions only (browser login). No API tokens for scripts, and no per-company or row-level permissions: `company:read` grants every data endpoint.
 - **No dedicated read-only DB role:** writes are blocked by READ ONLY transactions and ORM guards, while the connection still uses the app role.
 - **Integrity endpoint** re-hashes stored rows only. The full rebuild comparison is the CLI `dataset-verify`.
@@ -269,7 +269,37 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
   - user-facing listing edits or retirements (no domain service exists);
   - XLSX uploads (P14).
 - **Action log visibility:** users see their own actions; administrators see any by id. There is no cross-user listing endpoint.
-- **No UI yet** (M3 phase 3).
+- **UI:** see §4p (M3 phase 3).
+
+## 4p. Workflow UI (M3 phase 3, Session 9)
+
+- **Pending P15:** dataset locking and file ingestion are shown as unavailable for every role, administrators included. The CLI remains the route until the owner assigns `dataset:lock` / `data:import` (and, for API ingestion, mounts the raw archive in the API container).
+- **Not in the UI** (the API or CLI only):
+  - classification confirmation;
+  - listing validation, registration and trading-currency declaration;
+  - market prices and corporate actions per listing;
+  - rates/FX series;
+  - reference-dataset records;
+  - SEC ingestion.
+
+  The read and action endpoints exist; these views are the next UI candidates.
+- **No attribution of other users' actions:** the conflict-decision history and action records don't carry the acting user, because the read API does not return it (it is stored in `audit.audit_events` / `audit.api_actions`). Users see their own actions; administrators open others' by ID.
+- **Import history is not company-scoped:** `GET /api/imports` has no company filter. The workspace lists only the imports that its reported datasets reference (`source_summary.imports`).
+- **Statement grid:**
+  - read-only, with at most 60 periods per request (API limit; narrow the fiscal-year range);
+  - no editable cells, charts, ratios or export;
+  - conflict markers read up to 500 conflicts per dataset (the most in any dev dataset is 10).
+- **D28 libraries not installed** (TanStack Router, AG Grid, Tailwind/Radix, forms, ECharts): a small hash router and plain tables are used instead (D61). Editable grids and charts will need an approved dependency decision.
+- **Display only:**
+  - values are scaled and rounded for display by string arithmetic;
+  - per-share rows are never scaled;
+  - a row's unit comes from its first stored value.
+- **End-to-end tests:**
+  - component tests mock `fetch`;
+  - the integrated check against the dev stack was scripted over HTTP, plus a headless-browser render check under the production CSP;
+  - there is no browser-driver (Playwright) suite, which would be a new dev dependency.
+- **Synchronous actions:** verify and builds block their dialog for a few seconds; there is no progress indicator beyond "Working…".
+- **Session expiry** returns to sign-in and loses unsaved form input.
 
 ## 5. Unresolved items
 

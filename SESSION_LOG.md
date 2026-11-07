@@ -624,3 +624,23 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   6. Route sweep (every action × session/role/CSRF/Origin/permission, no mutation), `docs/operations/workflow-api.md`, D60/P15, KNOWN_LIMITATIONS §4o; a D59 OpenAPI test narrowed to the data router.
 - **Dev DB:** migrated `0015 → 0016` via `make up-dev`; live smoke test: POST without Origin → 403, without session → 401, 19 POST paths in OpenAPI. Domain row counts unchanged; `audit.api_actions` empty; providers disabled. No external requests.
 - **Measured:** verify (full rebuild) of the largest dev dataset 2.8 s, 172 MB peak in the API container — synchronous execution kept.
+
+### Session 9 — M3 phase 3: workflow UI (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `c190e87` = `origin/m2-ingestion`, clean. After `make up-dev`: Alembic `0016`, `audit.api_actions` empty, all 7 providers disabled. Baseline `make check`: backend 732, engine 109, frontend 2.
+- **Owner change in the working tree:** `CLAUDE.md` gained a "Session Continuity and Context Discipline" section during the session. It was left uncommitted (not part of this milestone) for the owner to commit.
+- **Design recorded as D61.** No new dependency: contract types are generated from OpenAPI by a Python script, with a staleness test. A hash router and semantic tables are used instead of the uninstalled D28 libraries. There are no inline styles (CSP `style-src 'self'`).
+- **Stages, each committed after its targeted tests:**
+  1. `1781855`: API layer (CSRF, Idempotency-Key, raw CSV bodies, error envelope), generated types + `make api-types` + backend staleness test, session/permissions, global 401 → sign-in, shell, company search and workspace, statement grid with exact decimal display and the provenance panel.
+  2. `041724d`: conflict review (candidates, policy choice, history) and the resolution form (select / enter value / override / revoke) with confirmation; reviewers read-only; fingerprint-based idempotency keys.
+  3. `b535dc0`: import history and detail; preview for statements, market and Damodaran CSVs, with record statuses and row issues; the ingestion step lists every required argument and is disabled for every role (P15); explicit 403 `pending_approval` and 503 `archive_unavailable` handling.
+  4. `05f25b1`: action history (own actions; admin lookup by ID) and dataset controls (build, rebuild, verify, discard, lock) with confirmations and visible reasons; lock unavailable for every role (P15).
+  5. App-level tests, D61, `docs/operations/workflow-ui.md`, KNOWN_LIMITATIONS §4p, README/API/development docs, this handoff.
+- **Integrated check on the dev stack** (rebuilt web image), as the dev admin over HTTPS:
+  - the UI is served with the production CSP and its bundle renders in headless Firefox;
+  - reads work on real data (AAPL draft IS grid, value provenance with accession, 6 open conflicts);
+  - `POST …/lock` and `POST /imports/statements` → 403 `pending_approval`;
+  - no CSRF token → 403 `csrf_failed`; foreign Origin → 403 `origin_rejected`;
+  - a statement preview returned a report (file error) and stored nothing;
+  - `GET /actions` was empty; logout → 401.
+- **Dev DB impact:** only the login/logout `audit_events` (+2) and one session row. `api_actions` stayed at 0; datasets, values, conflicts, resolutions, imports, companies and provider fetches were unchanged. No external or provider requests; no permission was assigned (`auth/rbac.py` untouched).

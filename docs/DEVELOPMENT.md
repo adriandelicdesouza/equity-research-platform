@@ -48,6 +48,7 @@ docker cp erp-dev-web-1:/data/caddy/pki/authorities/local/root.crt ./caddy-root.
 
 ```bash
 make check         # ruff, ruff format --check, eslint, mypy --strict, tsc, pytest, vitest
+make api-types     # regenerate frontend/src/api/schema.gen.ts after a backend schema change (D61)
 make test-backend  # needs the dev DB; uses a disposable 'erp_test' database
 ```
 
