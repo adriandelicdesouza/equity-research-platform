@@ -12,6 +12,7 @@ import { Badge, Empty, ErrorMessage, Loading, Notice } from "../../components/ui
 import { DISPLAY_SCALES, formatDecimal, formatExact, scaleSuffix } from "../../lib/decimal";
 import { navigate, type Route, withQuery } from "../../lib/router";
 import { DatasetPicker, useSelectedDataset } from "../company/datasetSelection";
+import { useAllConflicts } from "../conflicts/ConflictDetail";
 import {
   isScalable,
   PERIOD_TYPES,
@@ -193,10 +194,7 @@ function StatementView({
     placeholderData: keepPreviousData,
   });
   // All conflicts of this dataset (any status), to flag the affected cells.
-  const conflicts = useQuery({
-    queryKey: ["conflicts", dataset.id, "all"],
-    queryFn: () => api.conflicts(dataset.id, { limit: 500 }),
-  });
+  const conflicts = useAllConflicts(dataset.id);
   const byCell = useMemo(() => {
     const m = new Map<string, ConflictOut>();
     for (const c of conflicts.data?.items ?? []) m.set(periodKey(c.line_item_code, c.period), c);

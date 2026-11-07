@@ -63,7 +63,13 @@ export interface Call {
   body: unknown;
 }
 
-type Handler = (call: Call) => { status?: number; body?: unknown } | Promise<{ status?: number; body?: unknown }>;
+interface Reply {
+  status?: number;
+  body?: unknown;
+  /** Simulate a connection failure (fetch rejects). */
+  networkError?: boolean;
+}
+type Handler = (call: Call) => Reply | Promise<Reply>;
 
 /**
  * Route table keyed by "METHOD /api/path" (path without the query). A value is either a
@@ -87,7 +93,8 @@ export function mockFetch(routes: Record<string, unknown>) {
         status: 599,
       });
     }
-    const out = typeof route === "function" ? await (route as Handler)(call) : { body: route };
+    const out: Reply = typeof route === "function" ? await (route as Handler)(call) : { body: route };
+    if (out.networkError) throw new TypeError("Failed to fetch");
     const status = out.status ?? 200;
     return new Response(status === 204 ? null : JSON.stringify(out.body ?? null), {
       status,
