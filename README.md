@@ -31,7 +31,7 @@ The project is under active development. **Implemented and tested:**
 - **Versioned financial datasets**: company-specific fiscal periods (52/53-week years, quarters, H1/9M), standardized values with full provenance, derived quarters (incl. quarterly cash flows), gross profit, EBITDA, free cash flow and LTM values, accounting integrity checks on every build (balance, subtotals, cash roll-forward, cross-statement, shares/EPS, completeness), data-conflict detection with materiality thresholds and an audited resolve/override workflow that must be completed before locking, draft → locked lifecycle enforced in the database, and byte-identical rebuild verification.
 - **Standardization mapping (v1)**: versioned YAML (`mappings/`) mapping US GAAP and IFRS concepts onto 81 standard line items, with per-period concept fallback, sign normalization and a read-only coverage report (`sec-standardize-report`).
 - **Read and workflow APIs (`/api`)**: read-only data API (D59) and audited, CSRF-protected workflow actions (D60).
-- **Frontend (`frontend/`)**: React/TypeScript research workspace (D61): company search and workspace, financial statement grid with per-value provenance, conflict review and resolution, classification confirmation, listings (prices, corporate actions, trading currency, registration), reference data, import preview, dataset workflow controls and action history. Guide: `docs/operations/workflow-ui.md`.
+- **Frontend (`frontend/`)**: React/TypeScript research workspace (D61): company search and workspace, financial statement grid with per-value provenance, conflict review and resolution, classification confirmation, listings (prices, corporate actions, trading currency, registration), reference data, interest-rate and FX history (read-only), import preview, dataset workflow controls and action history. Guide: `docs/operations/workflow-ui.md`.
 
 **Not yet available:**
 - The valuation engine isn't yet exposed through the API or user interface.
@@ -45,7 +45,7 @@ The project is under active development. **Implemented and tested:**
 | M0 | Foundation: workspace, auth, audit, deployment | Done |
 | M1 | Valuation engine and methodology | Done |
 | M2 | Data ingestion and standardization: SEC (done), statement mapping (v1 done), versioned datasets (done), integrity checks, classification, market data (offline boundary done), CSV market-data import (done), manual listing registration (done), statement import (done), rates/FX adapters (offline, done), Damodaran reference datasets (done) | In progress |
-| M3 | Analyst workflow: read-only data API (done), workflow actions API (done; lock/import pending P15), workflow UI (phases 3–4 done: company, financials, conflicts, datasets, imports, classification, listings, reference data; next: valuation project → DCF → trace inspection) | In progress |
+| M3 | Analyst workflow: read-only data API (done), workflow actions API (done; lock/import pending P15), workflow UI (phases 3–4 done: company, financials, conflicts, datasets, imports, classification, listings, reference data, rates & FX; next: valuation project → DCF → trace inspection) | In progress |
 | M4 | Scenarios, sensitivity analysis, saved immutable valuations, exports | Planned |
 | M5 | Production hardening: backups, deployment, monitoring | Planned |
 | Later releases | Three-statement modelling, research library, comparables, other valuation methods | Planned |

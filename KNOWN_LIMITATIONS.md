@@ -271,17 +271,23 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Action log visibility:** users see their own actions; administrators see any by id. There is no cross-user listing endpoint.
 - **UI:** see §4p (M3 phase 3).
 
-## 4p. Workflow UI (M3 phase 3, Session 9; phase 4, Session 11)
+## 4p. Workflow UI (M3 phase 3, Session 9; phase 4, Session 11; rates & FX, Session 12)
 
 - **Pending P15:** dataset locking and file ingestion are shown as unavailable for every role, administrators included. The CLI remains the route until the owner assigns `dataset:lock` / `data:import` (and, for API ingestion, mounts the raw archive in the API container).
 - **Not in the UI** (the API or CLI only):
-  - rates/FX series (`/rates/series…`, `/fx/rates`): the adapters are disabled (P9) and the dev database holds no series;
   - SEC ingestion (CLI/worker);
   - company search by listing: the listings index has no company filter control, and `GET /listings` has no name search (ticker/MIC only).
 - **Market data views (phase 4):**
   - prices are a table only (no chart: ECharts is an unapproved D28 dependency) and show one provider/close basis at a time;
   - prices are not converted to other currencies, and split adjustments are not applied in the UI: the stored close basis is shown as is;
   - the provider filter is free text (the API has no provider list endpoint).
+- **Rates & FX (Session 12):**
+  - the dev database holds the 19 registered rate series but **no observations and no FX rates**: the adapters are disabled (P9), so the views show their empty states until the owner approves a first fetch;
+  - there is no API list of stored FX pairs: the user names base and quote (the configured Bank of Canada pairs are offered as shortcuts);
+  - no charts or yield-curve view (ECharts is an unapproved D28 dependency); tables only;
+  - business-day gaps are not enumerated: only stored dates are listed, with explicit empty states;
+  - revision marks (*in effect* / *superseded*) appear only when all of a date's revisions are on the same page;
+  - fetch IDs are shown, but there is no read endpoint for provider fetch records.
 - **Listing registration:** the issuer is named by company ID, an existing listing, a CIK or as new; there is no company picker inside the form (the company workspace link presets it). Provider symbols are typed as `provider=SYMBOL` lines.
 - **Trading currency:** declared once; the UI offers no correction path because the backend refuses a different value (a correction would need an owner-approved workflow).
 - **Reference records:** at most 50 records per page; one column per field seen on the page, so a field absent from every record of a page is not shown for that page.

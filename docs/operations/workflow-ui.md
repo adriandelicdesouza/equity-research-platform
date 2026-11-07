@@ -24,6 +24,9 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 | Listing workspace | `#/listings/{id}?view=prices\|actions&provider=&close_basis=&start=&end=&revisions=&sort=&kind=` | `GET /listings/{id}`, `/listings/{id}/prices`, `/listings/{id}/corporate-actions`; `POST /listings/{id}/trading-currency` |
 | Register a listing | `#/listings/register?company=` | `POST /listings/validate`, `POST /listings` |
 | Reference data | `#/reference?kind=&versions=all`, `#/reference/{id}?record=` | `GET /reference/datasets`, `/reference/datasets/{id}`, `/reference/datasets/{id}/records` |
+| Rate series | `#/rates?provider=&currency=&rate_type=` | `GET /rates/series` |
+| Rate series history | `#/rates/series/{code}?start=&end=&revisions=all&sort=date&offset=` | `GET /rates/series/{code}`, `/rates/series/{code}/observations` |
+| FX rates | `#/rates/fx?base=&quote=&provider=&start=&end=&revisions=&sort=&offset=` | `GET /fx/rates` |
 | Imports | `#/imports`, `#/imports/{id}`, `#/imports/preview` | `GET /imports`, `/imports/{id}`; `POST /imports/{kind}/validate`, `POST /imports/{kind}` |
 | Action history | `#/actions`, `#/actions/{id}` | `GET /actions`, `/actions/{id}` |
 | System | `#/system` | `GET /health`, `/auth/me` |
@@ -86,6 +89,14 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 - A version shows its lineage, supersedes/superseded-by links, correction reason, source, imported file and hashes, then its records in file order: one column per field with its unit (percentages are percentage points), text values as stored, the file location on hover, and lookup by record key.
 - Read-only: reference files are imported through *Imports* (ingestion pending P15).
 
+**Rates & FX (D58).** Read-only; there is no fetch, import or provider control.
+- *Interest-rate series* lists the registered series (US Treasury par yields, Government of Canada benchmark bond yields) with code, description, provider and provider series ID, currency, tenor, unit and the number of stored observations with their first and last dates. A series without observations says *none stored*.
+- A series shows its quotation convention, the **latest stored observation**, and the stored history: date range, *latest per date* or *every stored revision*, newest or oldest first, 50 per page.
+  - Values are the stored decimal strings in **percentage points** as published (4.84 = 4.84 % per annum); the UI never converts them.
+  - Dates the provider did not publish (holidays, `N/A`) are not stored and are not filled: the table lists stored dates only, and an empty range says so.
+  - In *every stored revision* mode, each date's revision count is shown; when all of a date's revisions are on the page, the one in effect (highest observation ID, the value returned in *latest* mode) and the superseded ones are marked.
+- *FX rates* needs a base and a quote (ISO codes, validated locally). The stored direction is stated (`CAD per 1 USD`: 1 USD = rate CAD); rates are never inverted and cross rates are never calculated. Asking for the reverse of a published pair returns nothing and links to the published direction. The Bank of Canada pairs the adapter is configured for (USD, EUR, GBP → CAD) are shortcuts; whether anything is stored comes from the API. Several providers for one pair → `409 ambiguous_series` (*Choose a series*). Each row names its provider series and fetch.
+
 **Action history.** Lists your own actions (successes and refusals) with target and refusal reason. Each action's detail shows the stored response. Administrators can open any action by its ID.
 
 ## Role behavior
@@ -93,7 +104,7 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 | Capability | admin | analyst | reviewer |
 |---|---|---|---|
 | Browse companies, statements, provenance, conflicts, imports, own actions | ✓ | ✓ | ✓ |
-| Browse classification history, listings, prices, corporate actions, reference data | ✓ | ✓ | ✓ |
+| Browse classification history, listings, prices, corporate actions, reference data, rates and FX | ✓ | ✓ | ✓ |
 | Verify a dataset | ✓ | ✓ | ✓ |
 | Build, rebuild, discard, record conflict decisions, preview files | ✓ | ✓ | disabled, with the reason |
 | Confirm a classification; check and register a listing; declare a trading currency | ✓ | ✓ | disabled, with the reason |
@@ -139,6 +150,7 @@ Every failure shows the backend's message under a plain-language title:
 - listing workspace: exact prices and ratios, origin links, ambiguous series, empty states, currency declaration and its guards, 409 with the recorded action;
 - listing registration: check → register of the identical body, stale checks, error reports, preset issuer, 422 details, reviewer read-only;
 - reference data: current/all versions, lineage and provenance, records with units, record lookup, 404;
-- routing of the Listings and Reference data sections.
+- rates & FX: series list (units, empty series), exact values, latest observation, date range and paging, revision marks, reversed range refused locally, FX direction, no inversion, pair validation, ambiguous provider, read-only for every role, 404/401;
+- routing of the Listings, Reference data and Rates & FX sections.
 
 The backend test `test_frontend_api_types.py` keeps the generated types current.

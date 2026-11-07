@@ -703,6 +703,7 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Phase 4 extension (Session 11, same rules, no new dependency or backend change):** classification confirmation (D53), the listings section (index, listing workspace with prices and corporate actions, trading-currency declaration, registration — D56) and reference-data views (D57). Two additional rules:
   - **check before register:** listing registration is enabled only for the exact request body that passed the read-only `POST /listings/validate`; any form change requires a new check (the backend re-checks under a lock anyway);
   - **series are never mixed in the UI either:** a price request without a provider/close-basis choice is sent as is, and `409 ambiguous_series` is shown as "Choose a series" with the stored options, never resolved by picking one.
+- **Rates & FX views (Session 12, read-only, same rules):** rate values are shown as stored and labelled *percentage points* (never converted to fractions or percent signs by arithmetic); FX is shown only in the stored direction (`quote per 1 base`, e.g. CAD per 1 USD for the Bank of Canada), never inverted or cross-calculated; an empty reverse pair links to the published direction. Dates the provider did not publish are not stored and are not filled. The configured Bank of Canada pairs (D58 `FX_SERIES`) appear as query shortcuts only; availability is always read from the API.
 
 ## Public-release decisions (2026-11-06)
 
