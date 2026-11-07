@@ -419,14 +419,23 @@ def test_every_data_route_is_get_only() -> None:
 
 
 def test_openapi_documents_data_paths_as_get_only(client: TestClient) -> None:
+    """Every data-router path is documented with GET; any other method on the same path
+    belongs to the workflow-actions routers (D60), never to the data router."""
+    from erp_backend.api import actions, import_actions
+
     spec = ok(client, "/api/openapi.json")
-    data_paths = {
-        p: ops
-        for p, ops in spec["paths"].items()
-        if not p.startswith(("/api/auth", "/api/admin", "/api/health"))
+    action_posts = {
+        "/api" + r.path
+        for r in actions.router.routes + import_actions.router.routes
+        if isinstance(r, APIRoute) and r.methods == {"POST"}
     }
+    data_paths = {"/api" + r.path for r in _data_routes()}
     assert "/api/datasets/{dataset_id}/values" in data_paths
-    assert all(set(ops) == {"get"} for ops in data_paths.values())
+    for path in data_paths:
+        ops = set(spec["paths"][path])
+        assert "get" in ops, path
+        extra = ops - {"get"}
+        assert extra <= {"post"} and (not extra or path in action_posts), (path, ops)
 
 
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])

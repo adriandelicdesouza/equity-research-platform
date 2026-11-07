@@ -1,6 +1,6 @@
 # Read-only data API (M3 phase 1)
 
-Decision D59; Blueprint §11 (authentication and authorization), §3.4 (immutable datasets), §10 (provenance). The API exposes the M2 data (companies, datasets, conflicts, imports, market data, rates/FX and reference datasets) for reading only.
+Decision D59 (the workflow actions are in `workflow-api.md`, D60); Blueprint §11 (authentication and authorization), §3.4 (immutable datasets), §10 (provenance). The API exposes the M2 data (companies, datasets, conflicts, imports, market data, rates/FX and reference datasets) for reading only.
 
 The framework is the existing FastAPI app (`erp_backend.main:create_app`). OpenAPI is served at `/api/openapi.json`, and in non-production environments the docs are at `/api/docs`.
 

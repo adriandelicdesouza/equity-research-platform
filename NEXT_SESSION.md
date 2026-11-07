@@ -1,20 +1,19 @@
 # Next Session Handoff
 
-**Updated:** 2026-11-07, end of Session 7. This file is the entry point (`CLAUDE.md`). Details are in:
+**Updated:** 2026-11-07, end of Session 8. This file is the entry point (`CLAUDE.md`). Details are in:
 - `SESSION_LOG.md`;
-- `DECISIONS.md` (D1–D59, pending P1–P14);
-- `KNOWN_LIMITATIONS.md` (§4c–§4n);
+- `DECISIONS.md` (D1–D60, pending P1–P15);
+- `KNOWN_LIMITATIONS.md` (§4c–§4o);
 - `docs/operations/`.
 
 ## Verified state (2026-11-07)
 
-- **Branch `m2-ingestion`.** HEAD is the Session 7 commit `feat(m3): read-only data API …` on top of `4742cba`. The working tree is clean after it.
-- **14 local commits, none pushed.** `origin/m2-ingestion` = `51cd1fa` (last push 2026-11-06).
+- **Branch `m2-ingestion`.** HEAD is the Session 8 stage-6 commit (`test/docs(m3): workflow route sweep …`); M3 phase 2 is six commits on top of `d179831`.
+- **Pushed:** the completed M3 phase 2 milestone was pushed to `origin/m2-ingestion` (fast-forward) at the end of Session 8; local and remote are equal (see `SESSION_LOG.md`).
 - **`main`** = `9ef5594` (M0 + M1). A future merge conflicts on `README.md`: keep the `m2-ingestion` version.
-- **Dev stack stopped.** Dev DB (checked live): Alembic **`0015`**; 19 rate series; 0 rate/FX observations, reference datasets or imports; SEC data unchanged (6 companies, 88,160 facts); open material conflicts AAPL 6, MSFT 6, RY 5.
+- **Dev stack stopped.** Dev DB (checked live): Alembic **`0016`** (`audit.api_actions` empty); 19 rate series; 0 rate/FX observations, reference datasets or imports; SEC data unchanged (6 companies, 88,160 facts); open material conflicts AAPL 6, MSFT 6, RY 5.
 - **All 7 providers disabled.** No live request has been made to Treasury, the Bank of Canada or Damodaran.
-- **`make check`:** backend 644, engine 109, frontend 2, all passing.
-- **No migration in Session 7.** The dev DB was unchanged by the API smoke test (row counts identical).
+- **`make check`:** backend 732, engine 109, frontend 2, all passing.
 
 ## Capabilities
 
@@ -24,6 +23,7 @@
 | Yahoo adapter (D54) | Synthetic payloads only; **disabled; unverified** (P9) |
 | CSV price/action import (D55); listings (D56); statement import (D57) | Implemented, tested on `erp_test` |
 | **Treasury par yields, GoC yields, BoC FX (D58, `0014`)** | Adapters + append-only storage + CLI; synthetic payloads only; **disabled** (P9) |
+| **Workflow actions API (D60, `0016`)** | 16 audited, CSRF-protected POST actions + action log/idempotency; lock and ingestion **pending P15** (403 for every role). Guide: `docs/operations/workflow-api.md` |
 | **Read-only data API (D59)** | 24 GET routes under `/api` (`company:read`); READ ONLY transactions + ORM guards. Guide: `docs/operations/data-api.md` |
 | **Damodaran ERP/CRP/betas/spreads (D58, `0015`)** | Versioned CSV import (validate → `--expect-sha256` → `--supersede --reason`). Guide: `docs/operations/reference-data-import.md` |
 
@@ -32,30 +32,23 @@
 - **Rates/FX:** no live data (formats not re-verified); no scheduler, FRED fallback or FX conversion.
 - **Damodaran:** CSV transcription only (XLSX needs P14); industries are not mapped to the platform classification.
 - **Nothing in M2 feeds valuations yet.** Rf, ERP, CRP, betas, spreads, prices and imported datasets are stored, not wired.
-- **API is read-only; no workflow actions or UI yet.** Cookie sessions only (no API tokens); no dedicated read-only DB role (§4n).
-- **Owner decisions open:** P9 (live provider requests), P13 (file-import gate, incl. `damodaran`), P14 (XLSX), P2–P5 (deployment).
+- **API:** cookie sessions only; lock/import await P15 (and API ingestion needs the raw-archive mount); actions are synchronous; no UI yet (§4n, §4o).
+- **Owner decisions open:** **P15** (who may lock datasets / ingest files; proposal in the workflow guide), P9 (live provider requests), P13 (file-import gate), P14 (XLSX), P2–P5 (deployment).
 
-## Next milestone (recommended): M3 phase 2 — workflow actions API
+## Next milestone (recommended): M3 phase 3 — workflow UI
 
-Expose the existing service functions as authenticated, CSRF-protected, audited POST endpoints, with no new business logic:
-- dataset build, rebuild, verify (async job), lock and discard;
-- conflict resolution;
-- classification confirmation;
-- import validate (read-only preview) → ingest with `expect_sha256`;
-- listing registration and currency declaration.
+React/TypeScript views (D28; types generated from `/api/openapi.json`) over the read API and the workflow actions:
+- company search → workspace (listings, classification, datasets);
+- financial statements grid with provenance drill-down;
+- conflicts with candidate comparison and the resolution form → rebuild;
+- import preview → confirm (ingest stays disabled until P15);
+- action history.
 
-Each action keeps the CLI's refusals and reason requirements. Uploads must be size-limited and must not expose archive paths.
-
-Permissions to decide (record as D60):
-- `company:write` for analysts;
-- `data:manage` for imports;
-- whether `admin` alone may lock datasets.
-
-Then **M3 phase 3:** the workflow UI (company → financials → conflicts → DCF → trace), generating its types from OpenAPI (D28).
+Before or alongside it: the owner's P15 decision (two `ROLE_PERMISSIONS` edits + tests; the API raw-archive mount for ingestion). Record the UI design as D61. Commit per stage; push the completed milestone.
 
 ## Rules
 
-- `m2-ingestion` only. **No push, merge, rebase or history rewrite.** No provider activation or network requests, and no new dependencies without approval.
+- `m2-ingestion` only. Commit per stage; **push only a completed, validated milestone** (fast-forward to `origin/m2-ingestion`); never force-push, merge, rebase or rewrite history. No provider activation or network requests, and no new dependencies without approval.
 - Don't do any of the following on the owner's behalf:
   - lock datasets;
   - confirm classifications or conflicts;
@@ -72,9 +65,9 @@ Then **M3 phase 3:** the workflow UI (company → financials → conflicts → D
 ```bash
 cd ~/equity-research-platform
 git switch m2-ingestion && git status --short && git log --oneline -3
-git rev-list --count origin/m2-ingestion..HEAD   # expect 14
-make up-dev        # background; several minutes; migrations to 0015
-make check         # expect backend 644, engine 109, frontend 2
+git rev-list --count origin/m2-ingestion..HEAD   # expect 0 after the Session 8 push
+make up-dev        # background; several minutes; migrations to 0016
+make check         # expect backend 732, engine 109, frontend 2
 make down-dev      # when finished
 ```
 

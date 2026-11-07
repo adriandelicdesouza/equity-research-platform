@@ -257,6 +257,20 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
   - valuations don't consume any of these endpoints yet.
 - **Dev only:** nothing is exposed publicly. Remote access still needs P3.
 
+## 4o. Workflow actions API (M3 phase 2, Session 8)
+
+- **Pending P15:** dataset locking and file ingestion via the API are refused for every role (`403 pending_approval`). Use the CLI until the owner assigns the permissions.
+- **API ingestion** also needs the raw-archive mount on the API container. Until then it returns `503 archive_unavailable`.
+- **Synchronous actions:** no job queue. Builds and verification take seconds at the current data sizes; much larger datasets would need background jobs.
+- **Idempotency is opt-in** (`Idempotency-Key`). Without a key, a retried resolution or registration is a second action. Builds and imports are idempotent by content.
+- **Not exposed:**
+  - SEC ingestion and live provider fetches (P9; disabled providers);
+  - classification *suggestion*;
+  - user-facing listing edits or retirements (no domain service exists);
+  - XLSX uploads (P14).
+- **Action log visibility:** users see their own actions; administrators see any by id. There is no cross-user listing endpoint.
+- **No UI yet** (M3 phase 3).
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

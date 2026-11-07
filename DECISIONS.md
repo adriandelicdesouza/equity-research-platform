@@ -662,6 +662,28 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Integrity endpoint:** re-hashes the stored values and checks. The rebuild-from-sources comparison stays in the CLI `dataset-verify` (too heavy for a request).
 - **Schema:** no migration. A read-only ORM mapping for the existing `ref.standard_line_items` provides labels and statement order.
 
+### D60. Workflow actions API: existing services behind audited, CSRF-protected POSTs; pending permissions (§10.3, §10.4, §11.2; D52, D53, D55–D59)
+- **Reuse:**
+  - the cookie sessions, RBAC, CSRF token + Origin middleware and error envelope;
+  - the domain services the CLI calls: `datasets.*`, `confirm_classification`, the three file importers, `check_listing` / `register_listing`, `set_trading_currency`.
+
+  No business rule is re-implemented; the API adds request validation and bookkeeping only.
+- **Action runner (`workflow.perform`):**
+  - the service runs in the request transaction;
+  - on success, the domain change + its audit event + an `audit.api_actions` record commit together;
+  - refusals roll back and are recorded alone;
+  - domain errors → `409 action_refused`.
+- **Idempotency:** the optional `Idempotency-Key` (unique per user) replays the stored response; reusing a key with a different request → `422`.
+- **Previews** (import and listing validation) run on the D59 read-only session: they cannot persist anything and are not logged as actions.
+- **Uploads:** raw request body (≤ 20 MB). No new multipart dependency.
+- **Migration `0016`:** `audit.api_actions`, append-only.
+- **Synchronous execution:** the heaviest action measured is verify, at 2.8 s and a 172 MB peak in the API container. A job queue is deferred until needed.
+- **Role matrix:**
+  - verify → `company:read`;
+  - build, rebuild, discard, conflict decisions (Blueprint §10.3: analyst), classification confirmation (D53: analyst), previews, listing registration and currency declaration → `company:write` (analyst + admin);
+  - `dataset:lock` and `data:import` → **pending (P15)**: defined, but in `PENDING_APPROVAL` and granted to **no role, admin included**, so they return `403 pending_approval`. The proposal is in `docs/operations/workflow-api.md`.
+- **API ingestion** also needs the raw archive to be writable in the API container. Until it is, ingestion is refused with `503 archive_unavailable`. The compose file was not changed.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
@@ -697,3 +719,4 @@ Status as of 2026-11-06 (end of Session 3).
 | P12 | **Publication**: push of `main`, `m2-ingestion`, `m0-foundation` and `m1-engine` to `origin` | **Resolved** 2026-11-06: owner-approved; pushed without force, `main` is the default branch |
 | P13 | **Provider gate for file imports** (D55, D57, D58): market-data, financial-statement and Damodaran file imports run with `manual_import` / `damodaran` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
 | P14 | **Spreadsheet dependency for `.xlsx` import** (e.g. `openpyxl`) | Open: needed only when XLSX import is wanted; CSV works without it |
+| P15 | **Workflow permissions `dataset:lock` and `data:import`** (D60). Proposal: lock → admin + analyst; import → admin only at first. API ingestion also needs the raw-archive mount on the API container. | Open: until approved, both are held by no role (403 `pending_approval`); the CLI remains the route |

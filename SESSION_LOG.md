@@ -609,3 +609,18 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - unauthenticated requests → 401; POST → 405.
 
   Dev DB row counts were identical before and after. No external requests were made.
+
+### Session 8 — M3 phase 2: workflow actions API (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `d179831`, clean, 14 ahead of `origin/m2-ingestion` (`51cd1fa`); upstream `origin/m2-ingestion`. After `make up-dev`: Alembic `0015`, all 7 providers disabled. Baseline `make check`: 644 / 109 / 2.
+- **Owner rule recorded:** commit each stage; push the completed milestone fast-forward after final validation (authorized for this milestone).
+- **Design recorded as D60;** pending decision **P15** (`dataset:lock`, `data:import`).
+- **Stages, each committed after its targeted tests:**
+  1. `b61cab6`: pending permissions (held by no role, admin included), `audit.api_actions` (migration `0016`), `workflow.perform` (transaction, refusal rollback + record, idempotent replay), `GET /api/actions`.
+  2. `03b842c`: dataset build / rebuild / verify / lock (pending) / discard.
+  3. `6cdffbe`: conflict resolutions (select candidate by source, enter value, override, revoke) and classification confirmation.
+  4. `436bbc0`: import previews (read-only session) and ingestion (pending) for statements, market data and Damodaran; 20 MB raw-body uploads; `503 archive_unavailable` without a writable archive.
+  5. `006cbb5`: listing validation, registration and currency declaration.
+  6. Route sweep (every action × session/role/CSRF/Origin/permission, no mutation), `docs/operations/workflow-api.md`, D60/P15, KNOWN_LIMITATIONS §4o; a D59 OpenAPI test narrowed to the data router.
+- **Dev DB:** migrated `0015 → 0016` via `make up-dev`; live smoke test: POST without Origin → 403, without session → 401, 19 POST paths in OpenAPI. Domain row counts unchanged; `audit.api_actions` empty; providers disabled. No external requests.
+- **Measured:** verify (full rebuild) of the largest dev dataset 2.8 s, 172 MB peak in the API container — synchronous execution kept.
