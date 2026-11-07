@@ -1,14 +1,14 @@
 # Next Session Handoff
 
-**Updated:** 2026-11-07, Session 15 (CNI real-data acceptance complete; Session 14: M3 phase 5, D62). Details: `SESSION_LOG.md`, `DECISIONS.md` (D1–D62, pending P2–P6, P9, P13–P15), `KNOWN_LIMITATIONS.md` (§4c–§4q), `docs/operations/valuation-api.md`, `docs/architecture/valuation-api.md`.
+**Updated:** 2026-11-07, Session 15 (CNI acceptance pushed; Phase 5b scenarios + sensitivities, D63). Details: `SESSION_LOG.md`, `DECISIONS.md` (D1–D63, pending P2–P6, P9, P13–P15), `KNOWN_LIMITATIONS.md` (§4c–§4r), `docs/operations/valuation-api.md`, `docs/architecture/valuation-api.md`.
 
 ## Verified state (2026-11-07)
 
-- **Branch `m2-ingestion`.** Session 14 commits (stages 1–6 `8c7f50d`, `b5c7b27`, `94e5f9f`, `f4c9184`, `ab87bf6`, then docs + this handoff) pushed fast-forward to `origin/m2-ingestion`, on top of the design commit `611d29e`. **Session 15: 3 local commits ahead of `origin` (CNI acceptance docs, look-ahead fix, handoff) — not pushed.**
+- **Branch `m2-ingestion`.** CNI acceptance (`c73c7d2`, `6c37343`, `af6d3d9`) pushed fast-forward (owner-authorized). **Phase 5b: 3 local commits ahead of `origin`** (`d06b453` backend, `82a53c9` UI, docs + handoff) — **not pushed; awaits owner authorization.**
 - **Owner-owned, untracked:** root transcript `2026-11-07-055858-…txt` (leave it).
 - **`main`** = `9ef5594` (M0 + M1). A future merge conflicts on `README.md`: keep the `m2-ingestion` version.
-- **Dev DB:** Alembic **`0017`**. **Session 15 (owner-approved):** CNI classification confirmed `non_financial` (record 7); **CNI v3 `9dbc995c-…` locked** (SHA `9b99aa2f…0f33162`, irreversible). Project "CNI — real-data acceptance (FY2025 base)" `05339b10-…`, base scenario `d6935c81-…` rev 3; **1 run**. Also the archived Session 13 project. No rate observations, FX, prices or reference datasets; all providers disabled.
-- **`make check` (Session 15, stack up):** check-ignored, lint, typecheck, engine **109**, backend **801**, frontend **115** — pass. UI check 16/16 on the rebuilt stack (`SESSION_LOG.md`).
+- **Dev DB:** Alembic **`0018`** (`val.sensitivity_runs`). **Session 15 (owner-approved):** CNI classification confirmed `non_financial` (record 7); **CNI v3 `9dbc995c-…` locked** (SHA `9b99aa2f…0f33162`, irreversible). Project "CNI — real-data acceptance (FY2025 base)" `05339b10-…`, base scenario `d6935c81-…` rev 3 (no other scenarios); **1 run**, 1 WACC × g grid (25 cells). Also the archived Session 13 project. No rate observations, FX, prices or reference datasets; all providers disabled.
+- **`make check` (Session 15, stack up):** check-ignored, lint, typecheck, engine **109**, backend **818**, frontend **119** — pass; `make api-types` no diff. UI checks on the rebuilt stack pass (`SESSION_LOG.md`).
 
 ## Capabilities
 
@@ -16,21 +16,23 @@
 |---|---|
 | SEC pipeline, datasets, conflicts, classification, imports, listings, rates/FX/reference (D42–D58) | Implemented |
 | Data API (D59) / actions API (D60) / workflow UI (D61) | Implemented; lock + ingestion **pending P15** |
-| **Valuation (D62)** | Projects, append-only assumptions, resolver, FCFF/FCFE runs (constant WACC), gates, content idempotency, reproduction, 24 routes, UI with preview, outputs, trace |
-| Valuation Phase 5b | **Not started** (needs owner authorization): scenarios, probabilities, sensitivities, assumption impact, regression beta |
+| **Valuation (D62)** | Projects, append-only assumptions, resolver, FCFF/FCFE runs (constant WACC), gates, content idempotency, reproduction, UI with preview, outputs, trace |
+| **Phase 5b (D63)** | Scenarios (inheritance, cycle checks, archive), probabilities + weighted summary, one-/two-way/tornado sensitivity grids (immutable, ≤ 100 cells), 34 routes, UI tabs. Open: assumption impact, regression beta (P9) |
 
 ## Outstanding
 
-- **CNI real-data acceptance: complete (Session 15).** First saved real-data FCFF run `9e3f5853-…` (CAD 115.99/share, output `0e15ac8c…`), idempotent resubmission and reproduction verified, UI checked; FCFE not run (owner decision). Look-ahead fix for dated analyst sources (D62 amendment). Local commits only — **push awaits owner authorization**.
+- **CNI real-data acceptance: complete and pushed.** Run `9e3f5853-…` (CAD 115.99/share, output `0e15ac8c…`) still resubmits as existing and reproduces after Phase 5b. CNI has no bull/bear scenarios: their assumptions are owner decisions.
+- **Phase 5b complete locally** (acceptance below met); push needs the owner's authorization.
 - **P15 open** (lock → admin + analyst; import → admin; plus raw-archive mount for API ingestion). **Also open:** P9, P13, P14, P2–P5.
-- Phase 5 limitations: `KNOWN_LIMITATIONS.md` §4q (no stub, three lease treatments, basic shares in market weights, dividends B→V not deducted, base scenario only).
+- Limitations: §4q (no stub, three lease treatments, dividends B→V) and §4r (single-parent inheritance, latest-run weighting, sensitivities hold RONIC at the run's value, 28-digit WACC in outputs).
 
-## Next milestone (recommended)
+## Next milestone (recommended): M4 completion — exports and audit history
 
-1. **Owner:** authorize the push of Session 15 commits; decide P15/P9; optionally lock/classify CNQ or SHOP (gaps listed in `SESSION_LOG.md`) or run CNI FCFE (needs debt/cash paths and cash yield).
-2. **Phase 5b** once authorized: design §6/§9.5 (scenarios, sensitivities ≤ 100 cells, assumption impact, regression beta; `val.sensitivity_runs`).
+Why first: the last Release 1 items (MASTER_BRIEF §22: Excel-compatible exports, basic audit history UI); no P9/P15 dependency.
+1. **Exports (CSV, Excel-compatible, no new dependency):** run (outputs, flows, WACC build-up, bridge, provenance lineage, engine/module versions, hashes, output kinds) and sensitivity grids, from stored server results only (§21); `GET` routes, UI download buttons. **Owner decision:** approve a spreadsheet library (e.g. `openpyxl`) for native `.xlsx`, or keep CSV.
+2. **Assumption/audit history UI:** per scenario and project, previous → new value, user, time, reason (§17.2); `valuation_impact` remains open.
 
-Phase 5b acceptance: scenario CRUD with cycle checks and weights summing to 1; WACC × g, WACC × exit multiple, growth × margin grids stored immutably with refused cells marked; tornado; tests and UI; `make check`; docs and handoff.
+Acceptance: exports reproduce stored values exactly with source attribution and engine version; tests (backend + vitest); `make check`; docs; handoff.
 
 ## Rules
 
@@ -46,7 +48,7 @@ cd ~/equity-research-platform
 git switch m2-ingestion && git status --short && git log --oneline -3
 git fetch && git rev-list --left-right --count origin/m2-ingestion...HEAD   # expect 0 0
 make up-dev        # background; several minutes; builds the UI into the web image
-make check         # expect backend 801, engine 109, frontend 115
+make check         # expect backend 818, engine 109, frontend 119
 make down-dev      # when finished
 ```
 

@@ -96,9 +96,34 @@ A valuation **project** pins one dataset version of one company. Its **base scen
 - **Classification (Q11):** `needs_review` → `classification_unconfirmed`; bank, insurer, specialty lender, investment holding → `classification_blocked`; REIT and asset manager/broker need an acknowledgement with reason (`acknowledgement_required`).
 - **Dataset checks (Q12):** failed error-severity checks for the balance-sheet period refuse the run (`checks_failed`) unless each is overridden with a reason.
 
+## Scenarios, probabilities and sensitivities (Phase 5b, D63)
+
+| Method and path | Permission | Purpose |
+|---|---|---|
+| `POST /projects/{id}/scenarios` | write + owner | `{name, kind: bull\|bear\|custom, parent_scenario_id?}` → 201 scenario (revision 0) |
+| `POST /scenarios/{id}/metadata` | write + owner | `{expected_revision, name?, sort_order?, parent_scenario_id?, clear_parent?, reason?}`; bumps the scenario revision |
+| `POST /scenarios/{id}/archive`, `/restore` | write + owner | `{expected_revision, reason}`; not the base; no active children or probability |
+| `POST /projects/{id}/probabilities` | write + owner | `{expected_revision (project), weights: {scenario_id: "0.25"}}`; exact sum 1; others cleared; `{}` clears all |
+| `GET /projects/{id}/scenario-summary` | read | `?methodology=`: latest run per active scenario; weighted per-share/primary value when complete, else `issues` |
+| `GET /scenarios/{id}/assumptions` | read | `?resolved=true` (default) applies inheritance, items carry `inherited_from`; `false` shows own rows |
+| `GET /sensitivity-variables` | read | Variable registry: range, absolute or shift, methodologies |
+| `POST /runs/{id}/sensitivities` | write + owner | `{kind: one_way\|two_way\|tornado, metric: per_share\|equity_value\|enterprise_value, x?, y?, tornado?, label?}` → 201 stored grid, or 200 `existing: true` for an identical configuration |
+| `GET /runs/{id}/sensitivities`, `GET /sensitivities/{id}` | read | Summaries; one grid with `config`, `base` (the run's value and variable values; tornado `ranking`) and `cells` (`value` or `refused_code` + `message`) |
+
+```json
+{"kind": "two_way", "metric": "per_share", "label": "WACC × g",
+ "x": {"variable": "wacc", "values": ["0.0525", "0.055", "0.0575"]},
+ "y": {"variable": "terminal_g", "values": ["0.015", "0.02", "0.025"]}}
+```
+
+- **Inheritance:** a child uses its parent's values unless it sets the key or clears it (clearing hides the inherited value). Revise and approve act on the scenario's own rows only. Runs of an inheriting scenario record `inherited_from` per inherited input and `scenario_lineage`; base runs are unchanged.
+- **Sensitivity cells** re-execute the run's stored input document with the named inputs replaced (values are decimal strings, up to 30 decimals; ratios are fractions; shifts are added to every forecast year). Everything else keeps the run's value — including RONIC when WACC varies. Cells the engine refuses (e.g. `g ≥ WACC`) are stored as refused with the code. ≤ 100 cells; the result is immutable and content-idempotent.
+
 ## Refusal codes (409)
 
 `dataset_mismatch`, `dataset_hash_mismatch`, `dataset_discarded`, `dataset_not_locked`, `invalid_period`, `invalid_dates`, `classification_unconfirmed`, `classification_blocked`, `acknowledgement_required`, `invalid_acknowledgement`, `checks_failed`, `invalid_check_override`, `input_missing`, `input_ambiguous`, `unit_mismatch`, `invalid_override`, `reason_required`, `assumption_not_approved`, `input_lookahead`, `input_superseded`, `currency_mismatch`, `listing_mismatch`, `invalid_input`, `lease_treatment_not_supported`, `unsupported_capital_structure`, `engine_refused` (with `engine_code`), `validation_blocked`, `revision_conflict`, `project_archived`, `duplicate_name`, `status_unchanged`, `dataset_unchanged`, `invalid_owner`, `owner_unchanged`, `source_required`, `source_invalid`, `source_not_found`, `source_mismatch`, `source_unit_unsupported`, `unknown_key`, `invalid_value`, `out_of_range`, `invalid_status`, `duplicate_change`, `nothing_to_clear`, `not_suggested`, `invalid_request`.
+
+Phase 5b (D63): `scenario_archived`, `scenario_cycle`, `scenario_has_children`, `scenario_weighted`, `invalid_parent`, `parent_unchanged`, `invalid_kind`, `invalid_name`, `too_many_scenarios`, `base_scenario`, `invalid_weights`, `weights_not_one`, `unknown_variable`, `variable_not_applicable`, `grid_too_large`, `engine_version_mismatch`.
 
 ## Runs, identity and reproduction
 
@@ -108,8 +133,8 @@ A valuation **project** pins one dataset version of one company. Its **base scen
 
 ## UI
 
-Valuations (main navigation) and a company's **Valuation** tab: project list and creation; project overview (edit, rebase, archive/restore); **Assumptions** (per-year driver grid, settings and cost-of-capital inputs with typed sources, approval, history, historical context); **Inputs, preview & run** (fiscal year, valuation date, price and FX rows, candidates with ids, server preview with errors/gates/warnings and outputs, reasoned decisions offered from the preview); **Saved runs** (outputs, WACC build-up, warnings, decisions, reproduction, inputs with provenance, trace inspector). The UI never calculates: every number comes from the server; decimals are formatted by string arithmetic.
+Valuations (main navigation) and a company's **Valuation** tab: project list and creation; project overview (edit, rebase, archive/restore); **Assumptions** (per-year driver grid, settings and cost-of-capital inputs with typed sources, approval, history, historical context); **Inputs, preview & run** (fiscal year, valuation date, price and FX rows, candidates with ids, server preview with errors/gates/warnings and outputs, reasoned decisions offered from the preview); **Saved runs** (outputs, WACC build-up, warnings, decisions, reproduction, inputs with provenance, trace inspector, **Sensitivity**: new grid, saved grids, grid with refused cells and the run's own cell, tornado); **Scenarios** (list with parents and probabilities, add, edit/re-parent, archive/restore, probabilities, weighted value). A `?scenario=` picker selects the scenario in Assumptions and Inputs/preview/run; inherited values are marked. The UI never calculates: every number comes from the server; decimals are formatted by string arithmetic.
 
 ## Tests
 
-`backend/tests/test_valuation_{schema,projects,runs,api}.py` (66 tests: triggers, grants, block ↔ engine-gate equality, B1, B1-VD and B3 reproduced through the resolver, every gate, idempotency, reproduction, FX reciprocal, ownership, HTTP workflow) and `frontend/src/features/valuation/Valuation.test.tsx` (mocked `fetch`).
+`backend/tests/test_valuation_{scenarios,sensitivity}.py` (Phase 5b: inheritance, cycles, archive rules, probabilities, weighted summary, grids, refused cells, tornado ranking, idempotency, limits, immutability) and `backend/tests/test_valuation_{schema,projects,runs,api}.py` (66 tests: triggers, grants, block ↔ engine-gate equality, B1, B1-VD and B3 reproduced through the resolver, every gate, idempotency, reproduction, FX reciprocal, ownership, HTTP workflow) and `frontend/src/features/valuation/Valuation.test.tsx` (mocked `fetch`).

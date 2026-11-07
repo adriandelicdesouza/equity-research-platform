@@ -311,7 +311,7 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 
 ## 4q. Valuation workflow (M3 phase 5, Session 14; D62)
 
-- **Phase 5b, not implemented:** scenarios other than the base (inheritance, bull/bear/custom, probability weights), sensitivity grids and tornado, assumption impact on value (`valuation_impact` in audit events stays empty), regression beta.
+- **Phase 5b:** scenarios, probabilities and sensitivities are implemented (§4r, D63). Still not implemented: assumption impact on value (`valuation_impact` in audit events stays empty) and regression beta.
 - **Methodology scope (Q9):**
   - constant WACC (no per-period vector); beta analyst-entered or bottom-up; one CRP country per scenario;
   - no stub periods: the balance-sheet date is a fiscal year-end;
@@ -329,6 +329,17 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Identity and reproduction:** the content identity includes the scenario revision, so re-entering identical values after another change gives a new run. Exact re-execution is guaranteed on the current engine version only (old engine versions are not installed side by side); after an upgrade, reproduction lists the differences.
 - **Historical context** is per fiscal year only; NWC there and in the model is receivables + inventory − payables.
 - **UI:** tables only (no charts; D28 libraries unapproved); the assumption editor edits the base scenario; no Playwright suite (component tests mock `fetch`; the integrated check was scripted over HTTPS).
+
+## 4r. Scenarios and sensitivities (Phase 5b, Session 15; D63)
+
+- **Scenario combinations and nesting beyond one parent chain:** a scenario inherits from one parent (depth ≤ 8); combining two scenarios' overrides, Monte Carlo and distributions (MASTER_BRIEF §11.4) are not implemented.
+- **Probability-weighted value:** uses each weighted scenario's *latest* run of the chosen methodology; it is complete only when those runs share valuation date, currency and dataset. It is a read-side figure, not a stored valuation; there is no saved "weighted run" yet (R4 reconciliation).
+- **Sensitivities hold everything else at the run's values.** A discount-rate (WACC / cost of equity) cell keeps the run's RONIC, roll-forward cost of equity and WACC build-up. Where RONIC was set equal to the run's WACC (D35 suggestion, e.g. the CNI acceptance run), WACC cells above the base make RONIC < WACC, so higher terminal growth *lowers* value there; this is the documented D35 economics, not an error. There is no "RONIC follows WACC" option yet.
+- **Precision of the base cell:** stored outputs serialize WACC to 28 significant digits while the engine works at 34, so a grid cell using the displayed WACC can differ from the run beyond the ~25th significant digit (CNI: …405082387 vs …405073133 per share). Per-share and enterprise-value cells are at full precision.
+- **Grid size and variables:** ≤ 100 cells synchronous (no job queue); variables are the D63 registry only (no beta, ERP, tax or capital-structure variables; no margin × reinvestment grid). Shifts apply equally to every forecast year.
+- **Runs from another engine version** cannot get new sensitivities (`engine_version_mismatch`); create a new run first.
+- **UI:** grids and the tornado are tables (bars are CSS; D28 chart libraries remain unapproved). The browser computes nothing financial: the probability sum, weighted value and tornado ranking come from the server.
+- **Dev data:** the CNI acceptance project has only its base scenario (bull/bear assumptions are analyst decisions not yet supplied) and one stored WACC × g grid on run `9e3f5853-…` (25 cells, 0 refused).
 
 ## 5. Unresolved items
 

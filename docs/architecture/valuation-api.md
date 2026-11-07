@@ -1,6 +1,6 @@
 # Valuation API design (M3 phase 5)
 
-**Status: APPROVED (P16 resolved, 2026-11-07) and IMPLEMENTED (Phase 5, Session 14) — decision D62.** Phase 5b (§6, §9.5) is designed but not implemented. Operations guide (endpoints, codes, data requirements): `docs/operations/valuation-api.md`.
+**Status: APPROVED (P16 resolved, 2026-11-07) and IMPLEMENTED (Phase 5, Session 14) — decision D62.** Phase 5b (scenarios §9.3, sensitivities §9.5) is implemented in Session 15 — decision D63 (migration `0018`); regression beta and assumption impact remain open. Operations guide (endpoints, codes, data requirements): `docs/operations/valuation-api.md`.
 
 **Written:** 2026-11-07, Session 13, against `m2-ingestion` @ `771bb0b` (Alembic `0016`, engine `0.1.0`). Implemented in Session 14 (Alembic `0017`).
 **Builds on:** Blueprint §3.3–§3.4, §6, §7, §8, §10, §11.2, §14.1 (M3/M4); D9, D10, D14, D18–D27, D35–D39, D50–D53, D58–D61; `docs/methodology/dcf.md`; `docs/operations/workflow-api.md`.

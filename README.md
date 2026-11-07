@@ -46,7 +46,7 @@ The project is under active development. **Implemented and tested:**
 | M1 | Valuation engine and methodology | Done |
 | M2 | Data ingestion and standardization: SEC (done), statement mapping (v1 done), versioned datasets (done), integrity checks, classification, market data (offline boundary done), CSV market-data import (done), manual listing registration (done), statement import (done), rates/FX adapters (offline, done), Damodaran reference datasets (done) | In progress |
 | M3 | Analyst workflow: read-only data API (done), workflow actions API (done; lock/import pending P15), workflow UI (phases 3–4 done: company, financials, conflicts, datasets, imports, classification, listings, reference data, rates & FX; next: valuation project → DCF → trace inspection) | In progress |
-| M4 | Scenarios, sensitivity analysis, saved immutable valuations, exports | Planned |
+| M4 | Scenarios, sensitivity analysis, saved immutable valuations, exports: saved immutable runs (D62), scenarios with inheritance and probabilities, sensitivity grids and tornado (D63) done; Excel export, regression beta and assumption impact open | In progress |
 | M5 | Production hardening: backups, deployment, monitoring | Planned |
 | Later releases | Three-statement modelling, research library, comparables, other valuation methods | Planned |
 
