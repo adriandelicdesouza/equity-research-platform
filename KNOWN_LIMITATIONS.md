@@ -271,18 +271,20 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Action log visibility:** users see their own actions; administrators see any by id. There is no cross-user listing endpoint.
 - **UI:** see §4p (M3 phase 3).
 
-## 4p. Workflow UI (M3 phase 3, Session 9)
+## 4p. Workflow UI (M3 phase 3, Session 9; phase 4, Session 11)
 
 - **Pending P15:** dataset locking and file ingestion are shown as unavailable for every role, administrators included. The CLI remains the route until the owner assigns `dataset:lock` / `data:import` (and, for API ingestion, mounts the raw archive in the API container).
 - **Not in the UI** (the API or CLI only):
-  - classification confirmation;
-  - listing validation, registration and trading-currency declaration;
-  - market prices and corporate actions per listing;
-  - rates/FX series;
-  - reference-dataset records;
-  - SEC ingestion.
-
-  The read and action endpoints exist; these views are the next UI candidates.
+  - rates/FX series (`/rates/series…`, `/fx/rates`): the adapters are disabled (P9) and the dev database holds no series;
+  - SEC ingestion (CLI/worker);
+  - company search by listing: the listings index has no company filter control, and `GET /listings` has no name search (ticker/MIC only).
+- **Market data views (phase 4):**
+  - prices are a table only (no chart: ECharts is an unapproved D28 dependency) and show one provider/close basis at a time;
+  - prices are not converted to other currencies, and split adjustments are not applied in the UI: the stored close basis is shown as is;
+  - the provider filter is free text (the API has no provider list endpoint).
+- **Listing registration:** the issuer is named by company ID, an existing listing, a CIK or as new; there is no company picker inside the form (the company workspace link presets it). Provider symbols are typed as `provider=SYMBOL` lines.
+- **Trading currency:** declared once; the UI offers no correction path because the backend refuses a different value (a correction would need an owner-approved workflow).
+- **Reference records:** at most 50 records per page; one column per field seen on the page, so a field absent from every record of a page is not shown for that page.
 - **No attribution of other users' actions:** the conflict-decision history and action records don't carry the acting user, because the read API does not return it (it is stored in `audit.audit_events` / `audit.api_actions`). Users see their own actions; administrators open others' by ID.
 - **Import history is not company-scoped:** `GET /api/imports` has no company filter. The workspace lists only the imports that its reported datasets reference (`source_summary.imports`).
 - **Statement grid:**

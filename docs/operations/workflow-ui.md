@@ -1,4 +1,4 @@
-# Workflow UI (M3 phase 3)
+# Workflow UI (M3 phases 3–4)
 
 Decision D61. The UI is a client of the read-only data API (`data-api.md`, D59) and the workflow actions API (`workflow-api.md`, D60). It implements no business rule of its own: every value, status and permission comes from the backend, which enforces all of them again on every request.
 
@@ -19,6 +19,11 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 | Financial statements | `#/companies/{id}/financials?dataset=&statement=IS&period=FY&from=&to=` | `GET /datasets/{id}/statements/{IS\|BS\|CF}`, `/datasets/{id}/values`, `/datasets/{id}/conflicts` |
 | Conflicts | `#/companies/{id}/conflicts?dataset=&status=&material=&conflict=` | `GET /datasets/{id}/conflicts`, `/companies/{id}/conflict-resolutions`; `POST …/conflicts/{key}/resolutions` |
 | Datasets & workflow | `#/companies/{id}/datasets?dataset=` | `POST /companies/{id}/datasets/build\|rebuild`, `/datasets/{id}/verify\|discard\|lock` |
+| Classification | `#/companies/{id}/classification` | `GET /companies/{id}/classifications`; `POST /companies/{id}/classification/confirm` |
+| Listings | `#/listings?ticker=&mic=` | `GET /listings` |
+| Listing workspace | `#/listings/{id}?view=prices\|actions&provider=&close_basis=&start=&end=&revisions=&sort=&kind=` | `GET /listings/{id}`, `/listings/{id}/prices`, `/listings/{id}/corporate-actions`; `POST /listings/{id}/trading-currency` |
+| Register a listing | `#/listings/register?company=` | `POST /listings/validate`, `POST /listings` |
+| Reference data | `#/reference?kind=&versions=all`, `#/reference/{id}?record=` | `GET /reference/datasets`, `/reference/datasets/{id}`, `/reference/datasets/{id}/records` |
 | Imports | `#/imports`, `#/imports/{id}`, `#/imports/preview` | `GET /imports`, `/imports/{id}`; `POST /imports/{kind}/validate`, `POST /imports/{kind}` |
 | Action history | `#/actions`, `#/actions/{id}` | `GET /actions`, `/actions/{id}` |
 | System | `#/system` | `GET /health`, `/auth/me` |
@@ -62,6 +67,25 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
   - a filterable record table with every row's errors and warnings.
 - The *ingest* step lists what ingestion requires: the previewed SHA-256 as `expect_sha256`, a source, `allow_partial` when records would be skipped, `allow_conflicts` for conflicting statement values, and `supersede` + reason for a changed reference lineage.
 
+**Classification (D53).**
+- Shows the effective classification, its status, the latest suggestion and confirmation, and the append-only history (suggestions and confirmations, with evidence on demand).
+- Analysts and administrators confirm a class with a reason (at least 10 characters) and a confirmation. A warning appears when the choice differs from the classifier's suggestion.
+
+**Listings and market data (D56, D58).**
+- *Listings* lists every listing (filter by ticker/MIC); the company overview links each ticker to its listing workspace.
+- The listing workspace shows identity, provider symbols and origin, then:
+  - **prices** for one provider and one close basis, with date range, latest-or-all revisions and order; values are the stored decimal strings; each row links to its import row (or names the provider fetch) and shows its revision count. When several series exist and none is chosen, the backend's `409 ambiguous_series` is shown as *Choose a series*;
+  - **corporate actions** (splits with exact ratios, cash dividends with amount and currency source).
+- **Trading currency** is declared once, with an ISO 4217 code, a reason and a confirmation. Once declared, the control is disabled with the reason; declaring the same value again returns `changed: false`, a different one is refused (`409`).
+- **Registration** (`#/listings/register`, or *Register another listing* from a company): name the issuer (existing company, same issuer as an existing listing, SEC CIK, or a new issuer), the listing (ticker, MIC, trading currency, security type, optional share class, ISIN and `provider=SYMBOL` lines) and the evidence (source, optional reference, reason).
+  - *Check* runs the read-only validation and shows errors, warnings, suggested provider symbols and the issuer resolution. Nothing is stored or logged.
+  - *Register* is enabled only for the exact request that passed the check; changing any field requires a new check. It asks for confirmation and links to the new listing and company.
+
+**Reference data (D57).**
+- Current version per lineage by default; *every version* includes superseded ones. Filter by kind.
+- A version shows its lineage, supersedes/superseded-by links, correction reason, source, imported file and hashes, then its records in file order: one column per field with its unit (percentages are percentage points), text values as stored, the file location on hover, and lookup by record key.
+- Read-only: reference files are imported through *Imports* (ingestion pending P15).
+
 **Action history.** Lists your own actions (successes and refusals) with target and refusal reason. Each action's detail shows the stored response. Administrators can open any action by its ID.
 
 ## Role behavior
@@ -69,8 +93,10 @@ All views are hash URLs, so every view, including the chosen dataset, statement 
 | Capability | admin | analyst | reviewer |
 |---|---|---|---|
 | Browse companies, statements, provenance, conflicts, imports, own actions | ✓ | ✓ | ✓ |
+| Browse classification history, listings, prices, corporate actions, reference data | ✓ | ✓ | ✓ |
 | Verify a dataset | ✓ | ✓ | ✓ |
 | Build, rebuild, discard, record conflict decisions, preview files | ✓ | ✓ | disabled, with the reason |
+| Confirm a classification; check and register a listing; declare a trading currency | ✓ | ✓ | disabled, with the reason |
 | Open any user's action by id | ✓ | – | – |
 | **Lock a dataset** | **pending P15** | **pending P15** | **pending P15** |
 | **Ingest a file** | **pending P15** | **pending P15** | **pending P15** |
@@ -87,7 +113,7 @@ Every failure shows the backend's message under a plain-language title:
 | `401` | Not signed in. Any `401` also returns the app to the sign-in page. |
 | `403` | Not permitted, Awaiting owner approval (`pending_approval`), or Security check failed (`csrf_failed` / `origin_rejected`) |
 | `404` | Not found |
-| `409` | Refused by a business rule, with a link to the recorded refusal |
+| `409` | Refused by a business rule, with a link to the recorded refusal; `ambiguous_series` (prices) → Choose a series |
 | `413` | File too large |
 | `422` | Invalid input, with field details |
 | `503` | Temporarily unavailable; for ingestion, plus the archive explanation |
@@ -108,6 +134,11 @@ Every failure shows the backend's message under a plain-language title:
 - CSRF and `Idempotency-Key` headers on POSTs;
 - 401/403/409/422/503 handling;
 - loading and empty states;
-- exact decimal formatting.
+- exact decimal formatting;
+- classification history, confirmation flow, reviewer read-only and refusals;
+- listing workspace: exact prices and ratios, origin links, ambiguous series, empty states, currency declaration and its guards, 409 with the recorded action;
+- listing registration: check → register of the identical body, stale checks, error reports, preset issuer, 422 details, reviewer read-only;
+- reference data: current/all versions, lineage and provenance, records with units, record lookup, 404;
+- routing of the Listings and Reference data sections.
 
 The backend test `test_frontend_api_types.py` keeps the generated types current.

@@ -700,6 +700,9 @@ These refine the approved architecture. None changes an approved methodology dec
   - provenance kinds (reported, derived, imported, analyst), missing, ambiguous and conflict states are marked per cell.
 - **Authorization:** controls are hidden or disabled from `/auth/me` permissions with a visible reason, for clarity only — the backend enforces every action. `dataset:lock` and `data:import` remain granted to no role (P15); the UI shows lock and ingestion as unavailable and still relays any backend response (403 `pending_approval`, 503 `archive_unavailable`). A 401 anywhere returns to sign-in.
 - **Consequential actions** (resolve, build, rebuild, discard, lock, ingest) require a confirmation dialog; reasons are required where the API requires them. Idempotency keys follow the request fingerprint: a retried identical request replays, a corrected request gets a new key.
+- **Phase 4 extension (Session 11, same rules, no new dependency or backend change):** classification confirmation (D53), the listings section (index, listing workspace with prices and corporate actions, trading-currency declaration, registration — D56) and reference-data views (D57). Two additional rules:
+  - **check before register:** listing registration is enabled only for the exact request body that passed the read-only `POST /listings/validate`; any form change requires a new check (the backend re-checks under a lock anyway);
+  - **series are never mixed in the UI either:** a price request without a provider/close-basis choice is sent as is, and `409 ambiguous_series` is shown as "Choose a series" with the stored options, never resolved by picking one.
 
 ## Public-release decisions (2026-11-06)
 
