@@ -3,7 +3,7 @@ import { api } from "../../api/endpoints";
 import { ErrorMessage, Loading } from "../../components/ui";
 import { href, type Route } from "../../lib/router";
 import { ConflictsTab } from "../conflicts/ConflictsTab";
-import { DatasetsTab } from "../datasets/DatasetsTab";
+import { DatasetsTab } from "../workflow/DatasetsTab";
 import { FinancialsTab } from "../financials/FinancialsTab";
 import { OverviewTab } from "./OverviewTab";
 
