@@ -326,3 +326,63 @@ ERP_CSV = (
     b"as_of_date,index,implied_erp,t_bond_rate,method\n"
     b"2024-12-01,SP500,5.00%,4.20%,Trailing 12-month cash yield\n"
 )
+
+
+def _fetch(db: Session, raw_root: Path, provider: str, payload: bytes) -> Any:
+    from erp_backend.ingestion import archive
+    from erp_backend.models import ProviderFetch
+
+    stored = archive.store(raw_root, provider, payload)
+    fetch = ProviderFetch(
+        provider_code=provider,
+        url="https://example.invalid/synthetic",
+        http_status=200,
+        content_sha256=stored.sha256,
+        payload_path=stored.relative_path,
+        bytes=stored.size,
+        stored_bytes=stored.stored_size,
+    )
+    db.add(fetch)
+    db.flush()
+    return fetch
+
+
+def price_observation(
+    db: Session, raw_root: Path, listing: Security, *, close: str, trade_date: date, currency: str
+) -> Any:
+    from erp_backend.models import PriceObservation
+
+    fetch = _fetch(db, raw_root, "yahoo_chart", f"{listing.id} {trade_date} {close}".encode())
+    row = PriceObservation(
+        security_id=listing.id,
+        provider_code="yahoo_chart",
+        trade_date=trade_date,
+        close=Decimal(close),
+        currency=currency,
+        close_basis="raw",
+        adj_close_basis="unverified",
+        fetch_id=fetch.id,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def fx_rate(
+    db: Session, raw_root: Path, *, base: str, quote: str, rate: str, obs_date: date
+) -> Any:
+    from erp_backend.models import FxRate
+
+    fetch = _fetch(db, raw_root, "bank_of_canada", f"FX{base}{quote} {obs_date} {rate}".encode())
+    row = FxRate(
+        base=base,
+        quote=quote,
+        obs_date=obs_date,
+        rate=Decimal(rate),
+        provider_code="bank_of_canada",
+        provider_series_id=f"FX{base}{quote}",
+        fetch_id=fetch.id,
+    )
+    db.add(row)
+    db.flush()
+    return row
