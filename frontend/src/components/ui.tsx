@@ -52,7 +52,7 @@ export function explainError(err: unknown): { title: string; message: string } {
       if (err.code === "ambiguous_series")
         return {
           title: "Choose a series",
-          message: `${err.message} Pick a provider and close basis in the filters above.`,
+          message: `${err.message} Choose one in the filters above.`,
         };
       return { title: "Refused by a business rule", message: err.message };
     case 413:

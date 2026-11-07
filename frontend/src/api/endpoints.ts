@@ -21,6 +21,9 @@ import type {
   Page_ClassificationOut_,
   Page_CompanyOut_,
   Page_ConflictOut_,
+  Page_FxRateOut_,
+  Page_RateObservationOut_,
+  Page_RateSeriesOut_,
   Page_CorporateActionOut_,
   Page_DatasetOut_,
   Page_FinancialValueOut_,
@@ -30,6 +33,7 @@ import type {
   Page_ReferenceDatasetOut_,
   Page_ReferenceRecordOut_,
   Page_ResolutionOut_,
+  RateSeriesOut,
   RebuildRequest,
   ReferenceDatasetDetailOut,
   ResolutionRequest,
@@ -143,6 +147,22 @@ export const api = {
     request<Page_CorporateActionOut_>("GET", `/listings/${id(listingId)}/corporate-actions`, {
       query: { ...q },
     }),
+  rateSeries: (q: { currency?: string; provider?: string; rate_type?: string; tenor?: string } & Paging = {}) =>
+    request<Page_RateSeriesOut_>("GET", "/rates/series", { query: { ...q } }),
+  rateSeriesDetail: (code: string) => request<RateSeriesOut>("GET", `/rates/series/${id(code)}`),
+  rateObservations: (
+    code: string,
+    q: { revisions?: "latest" | "all"; sort?: "date" | "-date" } & DateRange & Paging = {},
+  ) =>
+    request<Page_RateObservationOut_>("GET", `/rates/series/${id(code)}/observations`, {
+      query: { ...q },
+    }),
+  /** Stored direction only (quote per 1 base); 409 ambiguous_series when several providers. */
+  fx: (
+    q: { base: string; quote: string; provider?: string; revisions?: "latest" | "all"; sort?: "date" | "-date" } &
+      DateRange &
+      Paging,
+  ) => request<Page_FxRateOut_>("GET", "/fx/rates", { query: { ...q } }),
   referenceDatasets: (q: { kind?: string; current_only?: boolean } & Paging = {}) =>
     request<Page_ReferenceDatasetOut_>("GET", "/reference/datasets", { query: { ...q } }),
   referenceDataset: (datasetId: string) =>

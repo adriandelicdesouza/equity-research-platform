@@ -33,11 +33,12 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Companies" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("routes the listings and reference-data sections from the URL", async () => {
+  it("routes the listings, reference-data and rates sections from the URL", async () => {
     mockFetch({
       "GET /api/auth/me": makeMe("reviewer"),
       "GET /api/listings": page([]),
       "GET /api/reference/datasets": page([]),
+      "GET /api/rates/series": page([]),
     });
     setHash("#/listings");
     renderApp();
@@ -46,6 +47,9 @@ describe("App", () => {
     setHash("#/reference");
     expect(await screen.findByText(/No reference dataset has been imported/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reference data" })).toHaveAttribute("aria-current", "page");
+    setHash("#/rates");
+    expect(await screen.findByText("No rate series is registered for these filters.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Rates & FX" })).toHaveAttribute("aria-current", "page");
   });
 });
 

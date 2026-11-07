@@ -1,7 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import { parseHash } from "../../lib/router";
 import { apiError, IMPORT_ID, makeMe, mockFetch, page, renderWithSession } from "../../test/helpers";
-import { fieldColumns, ReferencePage, unitLabel } from "./ReferencePage";
+import { unitLabel } from "../../lib/format";
+import { fieldColumns, ReferencePage } from "./ReferencePage";
 
 const REF_ID = "99999999-9999-4999-8999-999999999999";
 const OLD_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

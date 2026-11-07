@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../../api/endpoints";
 import type { ReferenceDatasetDetailOut, ReferenceRecordOut, ReferenceValueOut } from "../../api/schema.gen";
 import { Badge, DateTime, Empty, ErrorMessage, Hash, KV, Loading, Pager } from "../../components/ui";
+import { unitLabel } from "../../lib/format";
 import { href, navigate, type Route, withQuery } from "../../lib/router";
 
 const LIMIT = 50;
@@ -187,13 +188,6 @@ export function fieldColumns(records: ReferenceRecordOut[]): { field: string; un
   const seen = new Map<string, string>();
   for (const r of records) for (const [f, v] of Object.entries(r.fields)) if (!seen.has(f)) seen.set(f, v.unit);
   return [...seen].map(([field, unit]) => ({ field, unit }));
-}
-
-/** Column unit note; percentages are stored in percentage points (5.5 = 5.5%). */
-export function unitLabel(unit: string): string | null {
-  if (unit === "percent") return "percentage points";
-  if (unit === "text" || unit === "date" || !unit) return null;
-  return unit;
 }
 
 function cellText(v: ReferenceValueOut | undefined): string {
