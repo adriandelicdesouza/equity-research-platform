@@ -211,6 +211,18 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **ISIN** is checked for format and check digit only, not against an external register.
 - **Dev DB:** nothing is registered. RY on XTSE is tested only on `erp_test` with synthetic prices.
 
+## 4l. Financial-statement import (M2, Session 5)
+- **CSV only.** XLSX needs an approved spreadsheet dependency (P14).
+- **Not covered:**
+  - segment data, operating metrics, stub periods, fiscal-year-end changes;
+  - per-cell source pages (one page per line-item row, one document per period column).
+- **No correction workflow.** A wrong stored import is superseded by importing the corrected value and resolving the resulting `cross_import` conflict. Stored records are never edited or deleted.
+- **SEC side:** cross-source conflicts are recorded in the import (`reported`) dataset only; a `standardized` SEC dataset is not compared with imports. The SEC comparison uses latest-reported values without SEC-side conflict resolutions.
+- **Verification:** if SEC facts with filing dates on or before an import dataset's `facts_as_of` are ingested after it was built, `dataset-verify` reports changed inputs (same caveat as SEC datasets). Build a new version.
+- **Interim coverage** of import datasets is `partial` whenever interim columns exist, never `full`.
+- **Not exercised on real data:** no statement file has been imported in dev, so only a read-only validation smoke test against stored AAPL data has run (matching SEC value → accepted).
+- **Valuation:** import datasets do not feed valuations yet, like every dataset in M2.
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

@@ -63,6 +63,7 @@ DCF_CRITICAL = frozenset({
     "IS.SHARES_DILUTED_WA", "BS.SHARES_OUTSTANDING",
 })  # fmt: skip
 ACTIONS = ("select_candidate", "enter_value", "override", "revoke")
+CANDIDATE_SOURCES = ("reported_fact", "import_value")
 
 
 @dataclass(frozen=True)
@@ -73,10 +74,14 @@ class Candidate:
     filed: date
     concept: str
     value: Decimal  # in the line item's sign convention
-    role: str  # first_reported | latest_reported | same_filing
+    role: str  # first_reported | latest_reported | same_filing | sec_reported | imported
+    # Id space of ``fact_id`` (D57): source.reported_facts or source.statement_import_values.
+    # Serialized only for imports, so SEC conflicts keep their exact bytes.
+    source: str = "reported_fact"
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        extra = {} if self.source == "reported_fact" else {"source": self.source}
+        return extra | {
             "fact_id": self.fact_id,
             "accession": self.accession,
             "form": self.form,
@@ -95,9 +100,11 @@ class Resolution:
     candidate_fact_id: int | None = None
     value: Decimal | None = None
     source_reference: str | None = None
+    candidate_source: str | None = None  # D57: set when selecting an imported candidate
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        extra = {} if self.candidate_source is None else {"candidate_source": self.candidate_source}
+        return extra | {
             "id": self.id,
             "action": self.action,
             "candidate_fact_id": self.candidate_fact_id,
@@ -117,7 +124,7 @@ class Materiality:
 @dataclass(frozen=True)
 class Conflict:
     key: str
-    kind: str  # within_filing | mixed_vintage
+    kind: str  # within_filing | mixed_vintage | cross_source | cross_import (D57)
     line_item: str
     period: FiscalPeriod
     candidates: tuple[Candidate, ...]

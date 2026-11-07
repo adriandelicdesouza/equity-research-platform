@@ -28,6 +28,7 @@ from erp_backend.models.source import (
     ReportedFact,
     SecTicker,
     SourceImport,
+    StatementImportValue,
 )
 
 __all__ = [
@@ -53,6 +54,7 @@ __all__ = [
     "SecTicker",
     "Security",
     "SourceImport",
+    "StatementImportValue",
     "User",
     "UserRole",
     "UserSession",

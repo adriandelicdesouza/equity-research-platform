@@ -6,8 +6,8 @@ or in an unexpected unit). Missing data never passes and values are never altere
 Checks (per period, LTM periods excluded; difference = actual − expected):
 
 * ``BALANCE``: total assets (expected) vs total liabilities + total equity (actual).
-* ``SUBTOTAL``: each *reported* parent with a ``subtotal`` definition in the mapping vs
-  the signed sum of its children (gross profit, SG&A, net income split, short-term
+* ``SUBTOTAL``: each *reported* (or imported, D57) parent with a ``subtotal`` definition in
+  the mapping vs the signed sum of its children (gross profit, SG&A, net income split, short-term
   debt, total equity, total liabilities and equity). A derived parent is not checked:
   it was computed from the same children.
 * ``CASH_ROLLFORWARD``: reported net change in cash vs CFO + CFI + CFF + FX effect.
@@ -248,7 +248,9 @@ class _Checker:
             if not item.subtotal or item.derived_only:
                 continue
             parent = self.get(p, item.code)
-            if parent is None or parent.provenance != "reported":
+            # Reported or imported parents only: a derived parent would be compared with
+            # itself. (Analyst-entered parents keep D51's behaviour: not checked.)
+            if parent is None or parent.provenance not in ("reported", "manual_import"):
                 continue
             check = "CASH_ROLLFORWARD" if item.code == "CF.NET_CHANGE_CASH" else "SUBTOTAL"
             inputs = {item.code: parent} | {c: self.get(p, c) for _, c in item.subtotal}

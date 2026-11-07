@@ -209,12 +209,12 @@ def _company_by_ticker(db: Session, ticker: str) -> Company | None:
     ).first()
 
 
-def _dataset_build(ticker: str, policy_name: str, as_of: str | None) -> int:
+def _dataset_build(ticker: str, policy_name: str, as_of: str | None, basis: str) -> int:
     import json
     from datetime import date
 
     from erp_backend.config import get_settings
-    from erp_backend.datasets import DatasetError, build_dataset
+    from erp_backend.datasets import IMPORT_BASIS, DatasetError, build_dataset, build_import_dataset
     from erp_backend.db import new_session
     from erp_backend.ingestion.selection import Policy
 
@@ -224,8 +224,9 @@ def _dataset_build(ticker: str, policy_name: str, as_of: str | None) -> int:
         if company is None:
             print(f"error: no company with ticker {ticker.upper()}", file=sys.stderr)
             return 1
+        build = build_import_dataset if basis == IMPORT_BASIS else build_dataset
         try:
-            result = build_dataset(
+            result = build(
                 db,
                 company,
                 mappings_root=settings.mappings_root,
@@ -259,10 +260,10 @@ def _dataset_list(ticker: str) -> int:
         for d in db.scalars(
             select(FinancialDataset)
             .where(FinancialDataset.company_id == company.id)
-            .order_by(FinancialDataset.version_no)
+            .order_by(FinancialDataset.basis, FinancialDataset.version_no)
         ):
             print(
-                f"v{d.version_no} {d.status:<9} {d.id} {d.selection_policy} as of "
+                f"{d.basis:<12} v{d.version_no} {d.status:<9} {d.id} {d.selection_policy} as of "
                 f"{d.facts_as_of} mapping {d.mapping_version} values {d.value_count} "
                 f"sha {d.content_sha256[:16]}"
             )
@@ -325,7 +326,8 @@ def _conflict_list(dataset_id: str, show_all: bool) -> int:
             if not show_all and c.status == "auto_resolved_immaterial":
                 continue
             cands = "; ".join(
-                f"fact {x['fact_id']} {x['role']} {x['value']} ({x['form']} {x['accession']} "
+                f"{'import value' if x.get('source') == 'import_value' else 'fact'} "
+                f"{x['fact_id']} {x['role']} {x['value']} ({x['form']} {x['accession']} "
                 f"filed {x['filed']})"
                 for x in c.candidates
             )
@@ -368,6 +370,7 @@ def _conflict_resolve(args: argparse.Namespace) -> int:
             resolution = resolve_conflict(
                 db, dataset.id, args.key, action, reason=args.reason,
                 candidate_fact_id=args.select, value=value, source_reference=args.source,
+                candidate_source=args.candidate_source,
             )  # fmt: skip
             print(f"recorded resolution {resolution.id}: {action} on {args.key}")
             if not args.no_rebuild:
@@ -377,6 +380,7 @@ def _conflict_resolve(args: argparse.Namespace) -> int:
                     db, company, mappings_root=settings.mappings_root,
                     mapping_version=dataset.mapping_version,
                     reason=f"superseded: conflict resolution {resolution.id} applied",
+                    basis=dataset.basis,
                 )  # fmt: skip
                 d = result.dataset
                 print(
@@ -389,7 +393,7 @@ def _conflict_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _dataset_rebuild(ticker: str, reason: str) -> int:
+def _dataset_rebuild(ticker: str, reason: str, basis: str) -> int:
     from erp_backend.config import get_settings
     from erp_backend.datasets import DatasetError, rebuild_draft
     from erp_backend.db import new_session
@@ -403,7 +407,7 @@ def _dataset_rebuild(ticker: str, reason: str) -> int:
         try:
             result = rebuild_draft(
                 db, company, mappings_root=settings.mappings_root,
-                mapping_version=settings.mapping_version, reason=reason,
+                mapping_version=settings.mapping_version, reason=reason, basis=basis,
             )  # fmt: skip
         except DatasetError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -585,6 +589,215 @@ def _market_import_list(limit: int) -> int:
             )
         if not rows:
             print("no imports")
+    return 0
+
+
+def _print_statement_report(report: object, show_all: bool) -> None:
+    from erp_backend.statements.file_import import ValidationReport
+
+    assert isinstance(report, ValidationReport)
+    print(f"template  {report.template}")
+    print(f"file      {report.filename} ({report.bytes} bytes)")
+    print(f"sha256    {report.file_sha256}")
+    if report.company_name:
+        print(f"issuer    {report.company_name} ({report.company_id})")
+    if report.metadata is not None:
+        m = report.metadata
+        print(
+            f"metadata  {m.issuer_ticker} {m.issuer_mic}, {m.currency}, scale 10^{m.scale}, "
+            f"shares 10^{m.share_scale}, {m.accounting_standard}, mapping "
+            f"{report.mapping_version}; source: {m.source_document}"
+        )
+    for c in report.columns:
+        print(f"period    {c.label}: {c.period_type} {c.fiscal_year} {c.start}..{c.end}")
+    for error in report.file_errors:
+        print(f"FILE ERROR    {error}")
+    for warning in report.file_warnings:
+        print(f"FILE WARNING  {warning}")
+    s = report.summary
+    print(
+        f"records   {s['records']}: accepted {s['accepted']}, conflicting {s['conflicting']}, "
+        f"duplicate {s['duplicate']}, unmapped {s['unmapped']}, ambiguous {s['ambiguous']}, "
+        f"rejected {s['rejected']}; warnings {s['warnings']}"
+    )
+    if report.records:
+        print(f"SEC       {'compared' if report.sec_compared else 'no SEC values to compare'}")
+    shown, limit = 0, None if show_all else 50
+    for r in report.records:
+        for i in r.issues:
+            if limit is not None and shown >= limit:
+                print("... more issues; use --all or --json")
+                return
+            print(f"  {r.locator}  {r.status.value:<11} {i.level}:{i.code}  {i.message}")
+            shown += 1
+
+
+def _statement_import_validate(args: argparse.Namespace) -> int:
+    import json
+
+    from erp_backend.config import get_settings
+    from erp_backend.db import new_session
+    from erp_backend.statements.file_import import validate
+
+    source = _read_input(args.file, args.filename)
+    if source is None:
+        return 1
+    with new_session() as db:
+        settings = get_settings()
+        report = validate(
+            db,
+            filename=source[0],
+            data=source[1],
+            mappings_root=settings.mappings_root,
+            default_mapping_version=settings.mapping_version,
+        )
+        db.rollback()  # validation never writes; make that explicit
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+    else:
+        _print_statement_report(report, args.all)
+        if not report.file_errors and report.to_store:
+            print(f"to ingest: statement-import ... --expect-sha256 {report.file_sha256}")
+    return 1 if report.file_errors else 0
+
+
+def _statement_import(args: argparse.Namespace) -> int:
+    from erp_backend.config import get_settings
+    from erp_backend.db import new_session
+    from erp_backend.statements.file_import import ImportRefusedError, ingest
+
+    settings = get_settings()
+    source = _read_input(args.file, args.filename)
+    if source is None:
+        return 1
+    with new_session() as db:
+        try:
+            result = ingest(
+                db,
+                filename=source[0],
+                data=source[1],
+                source_name=args.source,
+                source_reference=args.source_reference,
+                expected_sha256=args.expect_sha256,
+                raw_root=settings.raw_root,
+                mappings_root=settings.mappings_root,
+                default_mapping_version=settings.mapping_version,
+                allow_partial=args.allow_partial,
+                allow_conflicts=args.allow_conflicts,
+                build_dataset=not args.no_build,
+            )
+        except ImportRefusedError as exc:
+            db.rollback()
+            print(f"refused (nothing written): {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+    if result.import_id is None:
+        print(f"nothing new to store: {result.duplicates} record(s) already imported")
+        return 0
+    print(
+        f"import {result.import_id} ({result.status}): stored {result.inserted} "
+        f"(conflicting {result.conflicting}), duplicates {result.duplicates}, "
+        f"skipped {result.skipped}"
+    )
+    if result.dataset is not None:
+        d = result.dataset.dataset
+        state = "created" if result.dataset.created else "unchanged"
+        print(
+            f"dataset   reported v{d.version_no} {d.status} ({state}) {d.id}: values "
+            f"{d.value_count}, conflicts {d.source_summary['conflicts']}, validation "
+            f"{d.source_summary['validation']}"
+        )
+    return 0
+
+
+def _statement_import_list(ticker: str | None, mic: str | None, limit: int) -> int:
+    from sqlalchemy import select
+
+    from erp_backend.db import new_session
+    from erp_backend.models import SourceImport
+    from erp_backend.statements.template import TEMPLATE
+
+    with new_session() as db:
+        query = select(SourceImport).where(SourceImport.template_version == TEMPLATE)
+        if ticker:
+            query = query.where(SourceImport.summary["issuer"]["ticker"].astext == ticker.upper())
+        if mic:
+            query = query.where(SourceImport.summary["issuer"]["mic"].astext == mic.upper())
+        rows = db.scalars(query.order_by(SourceImport.imported_at.desc()).limit(limit)).all()
+        for r in rows:
+            s = r.summary
+            issuer = s.get("issuer", {})
+            print(
+                f"{r.id}  {r.imported_at:%Y-%m-%d %H:%M}  {issuer.get('ticker')} "
+                f"{issuer.get('mic')}  {r.status:<8} stored "
+                f"{s.get('accepted', 0) + s.get('conflicting', 0)} (conflicting "
+                f"{s.get('conflicting', 0)}), skipped {len(r.skipped)}  {r.original_filename}  "
+                f"sha256 {r.file_sha256[:12]}…  source: {r.source_name}"
+            )
+        if not rows:
+            print("no statement imports")
+    return 0
+
+
+def _statement_import_show(import_id: str, show_values: bool) -> int:
+    import json
+    import uuid
+
+    from sqlalchemy import select
+
+    from erp_backend.db import new_session
+    from erp_backend.models import FinancialDataset, SourceImport, StatementImportValue
+
+    with new_session() as db:
+        try:
+            ident = uuid.UUID(import_id)
+        except ValueError:
+            print(f"error: invalid import id {import_id!r}", file=sys.stderr)
+            return 2
+        r = db.get(SourceImport, ident)
+        if r is None:
+            print(f"error: no import {import_id}", file=sys.stderr)
+            return 1
+        print(f"import    {r.id} ({r.template_version}, {r.status})")
+        print(f"file      {r.original_filename} ({r.bytes} bytes) sha256 {r.file_sha256}")
+        print(f"archive   {r.stored_path}")
+        print(
+            f"source    {r.source_name}"
+            + (f" — {r.source_reference}" if r.source_reference else "")
+        )
+        print(f"imported  {r.imported_at:%Y-%m-%d %H:%M:%S %Z} by {r.imported_by or 'cli'}")
+        print(f"summary   {json.dumps(r.summary, sort_keys=True)}")
+        for item in r.skipped:
+            issues = "; ".join(f"{i['code']}: {i['message']}" for i in item["issues"])
+            print(f"  skipped {item['locator']} {item['status']}: {issues}")
+        values = db.scalars(
+            select(StatementImportValue)
+            .where(StatementImportValue.import_id == r.id)
+            .order_by(StatementImportValue.id)
+        ).all()
+        print(f"values    {len(values)} stored")
+        if show_values:
+            for v in values:
+                print(
+                    f"  {v.id:>8} {v.line_item_code:<28} {v.period_type} {v.fiscal_year} "
+                    f"{v.period_end} {v.reported_value} ×10^{v.scale} = {v.value} {v.unit}  "
+                    f"[{v.locator}; {v.source_document}"
+                    + (f", p. {v.source_page}" if v.source_page else "")
+                    + "]"
+                )
+        if values:
+            first = min(v.id for v in values)
+            datasets = db.scalars(
+                select(FinancialDataset)
+                .where(
+                    FinancialDataset.company_id == values[0].company_id,
+                    FinancialDataset.basis == "reported",
+                    FinancialDataset.import_cutoff_id >= first,
+                )
+                .order_by(FinancialDataset.version_no)
+            ).all()
+            for d in datasets:
+                print(f"dataset   reported v{d.version_no} {d.status} {d.id}")
     return 0
 
 
@@ -822,6 +1035,12 @@ def main(argv: list[str] | None = None) -> int:
         "--policy", choices=["latest_reported", "first_reported"], default="latest_reported"
     )
     dsb.add_argument("--as-of", help="Facts cut-off (YYYY-MM-DD); default: latest filing.")
+    dsb.add_argument(
+        "--basis",
+        choices=["standardized", "reported"],
+        default="standardized",
+        help="standardized: from SEC facts; reported: from financial-statement imports",
+    )
     dsl = sub.add_parser("dataset-list", help="List dataset versions of a company.")
     dsl.add_argument("--ticker", required=True)
     for name, text in (
@@ -847,12 +1066,18 @@ def main(argv: list[str] | None = None) -> int:
     how.add_argument("--value", help="analyst value (requires --source)")
     how.add_argument("--override", action="store_true", help="keep the policy value")
     how.add_argument("--revoke", action="store_true", help="revoke the active resolution")
+    cr.add_argument(
+        "--candidate-source",
+        choices=["reported_fact", "import_value"],
+        help="id space of --select when an id matches several candidates",
+    )
     cr.add_argument("--source", help="source reference for --value")
     cr.add_argument("--reason", required=True)
     cr.add_argument("--no-rebuild", action="store_true")
     rb = sub.add_parser("dataset-rebuild", help="Discard the open draft and build a new one.")
     rb.add_argument("--ticker", required=True)
     rb.add_argument("--reason", required=True)
+    rb.add_argument("--basis", choices=["standardized", "reported"], default="standardized")
     cls = sub.add_parser(
         "classify", help="Suggest a financial-business classification (SIC + XBRL evidence)."
     )
@@ -891,6 +1116,42 @@ def main(argv: list[str] | None = None) -> int:
             )
     mil = sub.add_parser("market-import-list", help="List ingested market-data files.")
     mil.add_argument("--limit", type=int, default=20)
+    for name, text in (
+        ("statement-import-validate", "Validate a financial-statement file (no writes)."),
+        ("statement-import", "Ingest a validated financial-statement file (append-only)."),
+    ):
+        si = sub.add_parser(name, help=text)
+        si.add_argument("--file", required=True, help="path, or - to read stdin")
+        si.add_argument("--filename", help="original file name (required with --file -)")
+        if name == "statement-import-validate":
+            si.add_argument("--json", action="store_true", help="full report as JSON")
+            si.add_argument("--all", action="store_true", help="show every issue")
+        else:
+            si.add_argument("--source", required=True, help="where the data came from")
+            si.add_argument("--source-reference", help="URL, document or retrieval note")
+            si.add_argument(
+                "--expect-sha256",
+                required=True,
+                help="SHA-256 printed by statement-import-validate",
+            )
+            si.add_argument(
+                "--allow-partial", action="store_true", help="store accepted records; skip the rest"
+            )
+            si.add_argument(
+                "--allow-conflicts",
+                action="store_true",
+                help="store values that differ from stored imports or SEC values (opens conflicts)",
+            )
+            si.add_argument(
+                "--no-build", action="store_true", help="do not build the import dataset draft"
+            )
+    sil = sub.add_parser("statement-import-list", help="List financial-statement imports.")
+    sil.add_argument("--ticker")
+    sil.add_argument("--mic")
+    sil.add_argument("--limit", type=int, default=20)
+    sis = sub.add_parser("statement-import-show", help="Show one financial-statement import.")
+    sis.add_argument("--id", required=True)
+    sis.add_argument("--values", action="store_true", help="list every stored value")
     lsc = sub.add_parser(
         "listing-set-currency", help="Declare a listing's trading currency (once; audited)."
     )
@@ -957,7 +1218,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sec-rebuild-from-archive":
         return _sec_rebuild()
     if args.command == "dataset-build":
-        return _dataset_build(args.ticker, args.policy, args.as_of)
+        return _dataset_build(args.ticker, args.policy, args.as_of, args.basis)
     if args.command == "dataset-list":
         return _dataset_list(args.ticker)
     if args.command in ("dataset-verify", "dataset-lock", "dataset-discard"):
@@ -968,7 +1229,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "conflict-resolve":
         return _conflict_resolve(args)
     if args.command == "dataset-rebuild":
-        return _dataset_rebuild(args.ticker, args.reason)
+        return _dataset_rebuild(args.ticker, args.reason, args.basis)
     if args.command == "classify":
         return _classify(args.ticker)
     if args.command == "classification-confirm":
@@ -979,6 +1240,14 @@ def main(argv: list[str] | None = None) -> int:
         return _market_import(args)
     if args.command == "market-import-list":
         return _market_import_list(args.limit)
+    if args.command == "statement-import-validate":
+        return _statement_import_validate(args)
+    if args.command == "statement-import":
+        return _statement_import(args)
+    if args.command == "statement-import-list":
+        return _statement_import_list(args.ticker, args.mic, args.limit)
+    if args.command == "statement-import-show":
+        return _statement_import_show(args.id, args.values)
     if args.command == "listing-set-currency":
         return _listing_set_currency(args)
     if args.command == "listing-validate":

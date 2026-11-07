@@ -16,6 +16,7 @@ from sqlalchemy import (
     Identity,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     func,
@@ -145,3 +146,32 @@ class SourceImport(Base):
     imported_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class StatementImportValue(Base):
+    """One imported financial-statement cell (append-only; migration 0013, D57).
+
+    ``reported_value`` is the number exactly as written in the file; ``value`` is the
+    normalized amount (``reported_value × 10^scale``, enforced by a CHECK)."""
+
+    __tablename__ = "statement_import_values"
+    __table_args__ = {"schema": "source"}  # noqa: RUF012
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    import_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source.imports.id"), nullable=False)
+    import_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    locator: Mapped[str] = mapped_column(Text, nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.companies.id"))
+    mapping_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    line_item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_type: Mapped[str] = mapped_column(String(4), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    reported_value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    scale: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    source_document: Mapped[str] = mapped_column(Text, nullable=False)
+    source_page: Mapped[str | None] = mapped_column(Text)

@@ -24,18 +24,27 @@ class DatasetValue:
     status: str  # ok | ambiguous
     value: Decimal | None
     unit: str
-    provenance: str  # reported | derived
+    provenance: str  # reported | derived | analyst | manual_import
     concept: str
     priority: int
     sign: int
     source_fact_ids: tuple[int, ...]
     detail: Mapping[str, Any] = field(default_factory=dict)  # JSON-native values only
+    # Imported values (D57): the source.statement_import_values row and its import.
+    # Serialized only when set, so datasets without imports keep their exact bytes.
+    import_value_id: int | None = None
+    import_id: str | None = None
 
     def sort_key(self) -> tuple[Any, ...]:
         return (*self.period.sort_key(), self.line_item)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        extra: dict[str, Any] = (
+            {}
+            if self.import_value_id is None
+            else {"import_value_id": self.import_value_id, "import_id": self.import_id}
+        )
+        return extra | {
             "period": [self.period.period_type, self.period.start.isoformat(),
                        self.period.end.isoformat()],
             "line_item": self.line_item,

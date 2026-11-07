@@ -63,6 +63,8 @@ class FinancialDataset(Base):
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     validation_sha256: Mapped[str | None] = mapped_column(String(64))
     resolution_cutoff_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Highest source.statement_import_values id a ``reported`` (import) dataset used (D57).
+    import_cutoff_id: Mapped[int | None] = mapped_column(BigInteger)
     interim_coverage: Mapped[str] = mapped_column(String(8), nullable=False)
     value_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -98,6 +100,9 @@ class FinancialValue(Base):
     sign_multiplier: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     source_fact_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), nullable=False)
     detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Set exactly when provenance_kind = 'manual_import' (D57; migration 0013).
+    import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    import_value_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class ValidationResult(Base):
@@ -131,6 +136,8 @@ class ConflictResolution(Base):
     conflict_key: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     candidate_fact_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Which id space candidate_fact_id refers to: reported_fact (NULL) or import_value (D57).
+    candidate_source: Mapped[str | None] = mapped_column(String(16))
     value: Mapped[Decimal | None] = mapped_column(Numeric)
     source_reference: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str] = mapped_column(Text, nullable=False)

@@ -41,16 +41,20 @@ from erp_backend.models import (
     FinancialValue,
     FiscalPeriodRow,
     ReportedFact,
+    SourceImport,
+    StatementImportValue,
     ValidationResult,
 )
 from erp_backend.standardization import conflicts as conflicts_mod
 from erp_backend.standardization import dataset as ds
+from erp_backend.standardization import imported as imp
 from erp_backend.standardization import mapping as mapping_mod
 from erp_backend.standardization import validation as checks_mod
 from erp_backend.standardization.periods import FiscalPeriod
 from erp_backend.standardization.resolve import taxonomy_for_standard
 
-BASIS = "standardized"
+BASIS = "standardized"  # SEC-built datasets
+IMPORT_BASIS = imp.BASIS  # "reported": built from financial-statement imports (D57)
 
 
 class DatasetError(Exception):
@@ -145,18 +149,20 @@ def resolutions_for(
         .where(ConflictResolution.company_id == company_id, ConflictResolution.id <= cutoff)
         .order_by(ConflictResolution.id)
     ).all()
-    return {
-        r.conflict_key: conflicts_mod.Resolution(
-            r.id, r.conflict_key, r.action, r.candidate_fact_id, r.value, r.source_reference
-        )
-        for r in rows
-    }
+    return {r.conflict_key: _resolution(r) for r in rows}
+
+
+def _resolution(r: ConflictResolution) -> conflicts_mod.Resolution:
+    return conflicts_mod.Resolution(
+        r.id, r.conflict_key, r.action, r.candidate_fact_id, r.value, r.source_reference,
+        r.candidate_source,
+    )  # fmt: skip
 
 
 def _candidate(d: dict[str, Any]) -> conflicts_mod.Candidate:
     return conflicts_mod.Candidate(
         d["fact_id"], d["accession"], d["form"], date.fromisoformat(d["filed"]), d["concept"],
-        Decimal(d["value"]), d["role"],
+        Decimal(d["value"]), d["role"], d.get("source", "reported_fact"),
     )  # fmt: skip
 
 
@@ -183,11 +189,7 @@ def stored_conflicts(db: Session, dataset: FinancialDataset) -> list[conflicts_m
                 c.materiality_basis,
             ),
             status=c.status,
-            resolution=None
-            if r is None
-            else conflicts_mod.Resolution(
-                r.id, r.conflict_key, r.action, r.candidate_fact_id, r.value, r.source_reference
-            ),
+            resolution=None if r is None else _resolution(r),
             detail=c.detail,
         )
         for c, p, r in rows
@@ -197,7 +199,7 @@ def stored_conflicts(db: Session, dataset: FinancialDataset) -> list[conflicts_m
 def _store_conflicts(
     db: Session,
     dataset: FinancialDataset,
-    built: ds.BuiltDataset,
+    built: ds.BuiltDataset | imp.BuiltImport,
     period_ids: dict[FiscalPeriod, uuid.UUID],
     user_id: uuid.UUID | None,
 ) -> None:
@@ -251,6 +253,8 @@ def stored_values(db: Session, dataset: FinancialDataset) -> list[ds.DatasetValu
             sign=v.sign_multiplier,
             source_fact_ids=tuple(v.source_fact_ids),
             detail=v.detail,
+            import_value_id=v.import_value_id,
+            import_id=None if v.import_id is None else str(v.import_id),
         )
         for v, p in rows
     ]
@@ -270,18 +274,33 @@ def header_of(dataset: FinancialDataset) -> ds.DatasetHeader:
     )
 
 
+def import_header_of(dataset: FinancialDataset) -> imp.ImportHeader:
+    sec = dataset.source_summary.get("sec_reference_header")
+    assert dataset.import_cutoff_id is not None
+    return imp.ImportHeader(
+        dataset.mapping_version, dataset.mapping_sha256, dataset.currency,
+        dataset.selection_policy, dataset.facts_as_of, dataset.input_sha256,
+        dataset.import_cutoff_id, dataset.resolution_cutoff_id,
+        sec["taxonomy"] if sec else None, sec["input_sha256"] if sec else None,
+        dataset.taxonomy, dataset.format_version,
+    )  # fmt: skip
+
+
 def stored_canonical(db: Session, dataset: FinancialDataset) -> bytes:
     values = stored_values(db, dataset)
     periods = sorted({v.period for v in values}, key=FiscalPeriod.sort_key)
-    return ds.canonical_bytes(header_of(dataset), periods, values, stored_conflicts(db, dataset))
+    conflicts = stored_conflicts(db, dataset)
+    if dataset.basis == IMPORT_BASIS:
+        return imp.canonical_bytes(import_header_of(dataset), periods, values, conflicts)
+    return ds.canonical_bytes(header_of(dataset), periods, values, conflicts)
 
 
-def _current(db: Session, company_id: uuid.UUID) -> FinancialDataset | None:
+def _current(db: Session, company_id: uuid.UUID, basis: str = BASIS) -> FinancialDataset | None:
     return db.scalars(
         select(FinancialDataset)
         .where(
             FinancialDataset.company_id == company_id,
-            FinancialDataset.basis == BASIS,
+            FinancialDataset.basis == basis,
             FinancialDataset.status != "discarded",
         )
         .order_by(FinancialDataset.version_no.desc())
@@ -289,12 +308,14 @@ def _current(db: Session, company_id: uuid.UUID) -> FinancialDataset | None:
     ).first()
 
 
-def _latest_locked(db: Session, company_id: uuid.UUID) -> FinancialDataset | None:
+def _latest_locked(
+    db: Session, company_id: uuid.UUID, basis: str = BASIS
+) -> FinancialDataset | None:
     return db.scalars(
         select(FinancialDataset)
         .where(
             FinancialDataset.company_id == company_id,
-            FinancialDataset.basis == BASIS,
+            FinancialDataset.basis == basis,
             FinancialDataset.status == "locked",
         )
         .order_by(FinancialDataset.version_no.desc())
@@ -335,16 +356,31 @@ def build_dataset(
             f"{company.legal_name} has an open draft (version {current.version_no}); "
             "lock or discard it before building a different version"
         )
-    parent = _latest_locked(db, company.id)
+    return _create_version(db, company, BASIS, built, resolution_cutoff_id=cutoff, user_id=user_id)
+
+
+def _create_version(
+    db: Session,
+    company: Company,
+    basis: str,
+    built: ds.BuiltDataset | imp.BuiltImport,
+    *,
+    resolution_cutoff_id: int | None,
+    user_id: uuid.UUID | None,
+    import_cutoff_id: int | None = None,
+    extra_summary: dict[str, Any] | None = None,
+) -> BuildResult:
+    """Persist a new draft version (values, checks, conflicts) with its audit events."""
+    parent = _latest_locked(db, company.id, basis)
     version_no = (
         db.scalar(
             select(func.coalesce(func.max(FinancialDataset.version_no), 0)).where(
-                FinancialDataset.company_id == company.id, FinancialDataset.basis == BASIS
+                FinancialDataset.company_id == company.id, FinancialDataset.basis == basis
             )
         )
         or 0
     ) + 1
-    summary = dict(built.summary)
+    summary = dict(built.summary) | (extra_summary or {})
     summary["diff_vs_parent"] = (
         ds.diff(stored_values(db, parent), list(built.values)) if parent is not None else None
     )
@@ -357,7 +393,7 @@ def build_dataset(
     h = built.header
     dataset = FinancialDataset(
         company_id=company.id,
-        basis=BASIS,
+        basis=basis,
         version_no=version_no,
         parent_dataset_id=parent.id if parent else None,
         status="draft",
@@ -367,11 +403,12 @@ def build_dataset(
         currency=h.currency,
         selection_policy=h.selection_policy,
         facts_as_of=h.facts_as_of,
-        format_version=ds.FORMAT_VERSION,
+        format_version=h.format_version,
         input_sha256=h.input_sha256,
         content_sha256=built.content_sha256,
         validation_sha256=built.validation_sha256,
-        resolution_cutoff_id=cutoff,
+        resolution_cutoff_id=resolution_cutoff_id,
+        import_cutoff_id=import_cutoff_id,
         interim_coverage=built.interim_coverage,
         value_count=len(built.values),
         source_summary=summary,
@@ -398,6 +435,8 @@ def build_dataset(
                 "sign_multiplier": v.sign,
                 "source_fact_ids": list(v.source_fact_ids),
                 "detail": dict(v.detail),
+                "import_value_id": v.import_value_id,
+                "import_id": None if v.import_id is None else uuid.UUID(v.import_id),
             }
             for v in built.values
         ],
@@ -423,31 +462,174 @@ def build_dataset(
             for r in built.checks
         ],
     )
+    after: dict[str, Any] = {
+        "company_id": str(company.id),
+        "version_no": version_no,
+        "content_sha256": built.content_sha256,
+        "input_sha256": h.input_sha256,
+        "mapping": f"{h.mapping_version}:{h.mapping_sha256}",
+        "selection_policy": h.selection_policy,
+        "facts_as_of": h.facts_as_of.isoformat(),
+        "values": len(built.values),
+        "validation_sha256": built.validation_sha256,
+        "validation": built.summary["validation"],
+        "conflicts": built.summary["conflicts"],
+        "resolution_cutoff_id": resolution_cutoff_id,
+        "parent_dataset_id": str(parent.id) if parent else None,
+    }
+    if basis != BASIS:
+        after |= {"basis": basis, "import_cutoff_id": import_cutoff_id}
     audit.record(
         db,
         action="dataset_created",
         entity_type="financial_dataset",
         entity_id=str(dataset.id),
         user_id=user_id,
-        after={
-            "company_id": str(company.id),
-            "version_no": version_no,
-            "content_sha256": built.content_sha256,
-            "input_sha256": h.input_sha256,
-            "mapping": f"{h.mapping_version}:{h.mapping_sha256}",
-            "selection_policy": h.selection_policy,
-            "facts_as_of": h.facts_as_of.isoformat(),
-            "values": len(built.values),
-            "validation_sha256": built.validation_sha256,
-            "validation": built.summary["validation"],
-            "conflicts": built.summary["conflicts"],
-            "resolution_cutoff_id": cutoff,
-            "parent_dataset_id": str(parent.id) if parent else None,
-        },
+        after=after,
     )
     _store_conflicts(db, dataset, built, period_ids, user_id)
     db.flush()
     return BuildResult(dataset, created=True)
+
+
+# ---- Import datasets (basis "reported"; Blueprint §4.6; D57) ---------------------------------
+
+
+def import_records(
+    db: Session, company_id: uuid.UUID, cutoff: int | None = None
+) -> list[imp.ImportedRecord]:
+    """Stored statement-import values of a company (ids ≤ cutoff when given)."""
+    query = (
+        select(StatementImportValue, SourceImport)
+        .join(SourceImport, SourceImport.id == StatementImportValue.import_id)
+        .where(StatementImportValue.company_id == company_id)
+        .order_by(StatementImportValue.id)
+    )
+    if cutoff is not None:
+        query = query.where(StatementImportValue.id <= cutoff)
+    return [
+        imp.ImportedRecord(
+            id=v.id,
+            import_id=str(v.import_id),
+            imported_on=i.imported_at.astimezone(UTC).date(),
+            filename=i.original_filename,
+            locator=v.locator,
+            line_item=v.line_item_code,
+            period=FiscalPeriod(v.fiscal_year, v.period_type, v.period_start, v.period_end),
+            value=v.value,
+            unit=v.unit,
+            reported_value=v.reported_value,
+            scale=v.scale,
+            source_document=v.source_document,
+            source_page=v.source_page,
+        )
+        for v, i in db.execute(query).all()
+    ]
+
+
+def sec_reference(
+    db: Session, company: Company, mapping: mapping_mod.MappingSet, facts_as_of: date | None
+) -> imp.SecReference | None:
+    """Latest-reported SEC values (no resolutions) for cross-source comparison, or None
+    when the company has no usable SEC facts (e.g. a TSX-only issuer)."""
+    taxonomy = taxonomy_for_standard(company.accounting_standard)
+    if taxonomy is None or not company.reporting_currency:
+        return None
+    facts = facts_with_ids(db, company.id)
+    if not facts:
+        return None
+    try:
+        built = ds.build(
+            facts, mapping, taxonomy=taxonomy, currency=company.reporting_currency,
+            policy=Policy.LATEST_REPORTED, facts_as_of=facts_as_of,
+        )  # fmt: skip
+    except ds.DatasetBuildError:
+        return None
+    return imp.SecReference.from_values(
+        built.values, mapping, taxonomy=taxonomy, facts_as_of=built.header.facts_as_of,
+        input_sha256=built.header.input_sha256,
+    )  # fmt: skip
+
+
+def _build_import(
+    db: Session,
+    company: Company,
+    mapping: mapping_mod.MappingSet,
+    policy: Policy,
+    facts_as_of: date | None,
+    import_cutoff_id: int,
+    resolution_cutoff_id: int | None,
+) -> imp.BuiltImport:
+    if not company.reporting_currency:
+        raise DatasetError(f"{company.legal_name}: a declared reporting currency is required")
+    records = import_records(db, company.id, import_cutoff_id)
+    sec = sec_reference(db, company, mapping, facts_as_of)
+    if facts_as_of is None:
+        # The SEC comparison cut-off; without SEC facts, the date of the latest import.
+        facts_as_of = (
+            sec.facts_as_of
+            if sec
+            else max((r.imported_on for r in records), default=datetime.now(UTC).date())
+        )
+    try:
+        return imp.build(
+            records, mapping, currency=company.reporting_currency,
+            import_cutoff_id=import_cutoff_id, facts_as_of=facts_as_of, sec=sec, policy=policy,
+            resolutions=resolutions_for(db, company.id, resolution_cutoff_id),
+            resolution_cutoff_id=resolution_cutoff_id,
+        )  # fmt: skip
+    except imp.ImportBuildError as exc:
+        raise DatasetError(f"{company.legal_name}: {exc}") from exc
+
+
+def build_import_dataset(
+    db: Session,
+    company: Company,
+    *,
+    mappings_root: Path,
+    mapping_version: str,
+    policy: Policy = Policy.LATEST_REPORTED,
+    facts_as_of: date | None = None,
+    user_id: uuid.UUID | None = None,
+) -> BuildResult:
+    """Draft ``reported`` dataset from the company's statement imports (Blueprint §4.6).
+
+    Same lifecycle as SEC datasets: one open draft per company and basis, byte-identical
+    builds create nothing, the parent is the latest locked version of this basis."""
+    mapping = mapping_mod.load(mappings_root, mapping_version)
+    import_cutoff = db.scalar(
+        select(func.max(StatementImportValue.id)).where(
+            StatementImportValue.company_id == company.id
+        )
+    )
+    if import_cutoff is None:
+        raise DatasetError(f"{company.legal_name}: no imported financial statements")
+    cutoff = db.scalar(
+        select(func.max(ConflictResolution.id)).where(ConflictResolution.company_id == company.id)
+    )
+    built = _build_import(db, company, mapping, policy, facts_as_of, import_cutoff, cutoff)
+    current = _current(db, company.id, IMPORT_BASIS)
+    if (
+        current is not None
+        and current.content_sha256 == built.content_sha256
+        and current.validation_sha256 == built.validation_sha256
+    ):
+        return BuildResult(current, created=False)
+    if current is not None and current.status == "draft":
+        raise DatasetError(
+            f"{company.legal_name} has an open import draft (version {current.version_no}); "
+            "lock or discard it before building a different version"
+        )
+    h = built.header
+    sec_header = (
+        None
+        if h.sec_taxonomy is None
+        else {"taxonomy": h.sec_taxonomy, "input_sha256": h.sec_input_sha256}
+    )
+    return _create_version(
+        db, company, IMPORT_BASIS, built, resolution_cutoff_id=cutoff, user_id=user_id,
+        import_cutoff_id=import_cutoff, extra_summary={"sec_reference_header": sec_header},
+    )  # fmt: skip
 
 
 def stored_checks(db: Session, dataset: FinancialDataset) -> list[checks_mod.CheckResult]:
@@ -512,15 +694,24 @@ def verify_dataset(db: Session, dataset: FinancialDataset, *, mappings_root: Pat
     )
     company = db.get(Company, dataset.company_id)
     assert company is not None
-    rebuilt = _build(
-        db,
-        company,
-        mapping,
-        Policy(dataset.selection_policy),
-        dataset.facts_as_of,
-        dataset.resolution_cutoff_id,
-    )
-    same_format = dataset.format_version == ds.FORMAT_VERSION
+    rebuilt: ds.BuiltDataset | imp.BuiltImport
+    if dataset.basis == IMPORT_BASIS:
+        assert dataset.import_cutoff_id is not None
+        rebuilt = _build_import(
+            db, company, mapping, Policy(dataset.selection_policy), dataset.facts_as_of,
+            dataset.import_cutoff_id, dataset.resolution_cutoff_id,
+        )  # fmt: skip
+        same_format = dataset.format_version == imp.FORMAT_VERSION
+    else:
+        rebuilt = _build(
+            db,
+            company,
+            mapping,
+            Policy(dataset.selection_policy),
+            dataset.facts_as_of,
+            dataset.resolution_cutoff_id,
+        )
+        same_format = dataset.format_version == ds.FORMAT_VERSION
     return Verification(
         stored_matches=stored_ok,
         validation_matches=validation_ok,
@@ -641,6 +832,7 @@ def resolve_conflict(
     candidate_fact_id: int | None = None,
     value: Decimal | None = None,
     source_reference: str | None = None,
+    candidate_source: str | None = None,
     user_id: uuid.UUID | None = None,
 ) -> ConflictResolution:
     """Record an analyst decision for a conflict detected in ``dataset_id``.
@@ -662,9 +854,28 @@ def resolve_conflict(
     if found is None:
         raise DatasetError(f"Dataset {dataset_id} has no conflict {conflict_key}")
     conflict, period = found
-    fact_ids = {c["fact_id"] for c in conflict.candidates}
-    if action == "select_candidate" and candidate_fact_id not in fact_ids:
-        raise DatasetError(f"Fact {candidate_fact_id} is not a candidate of {conflict_key}")
+    if candidate_source is not None and candidate_source not in conflicts_mod.CANDIDATE_SOURCES:
+        raise DatasetError(f"Unknown candidate source {candidate_source!r}")
+    if action == "select_candidate":
+        matches = [
+            c
+            for c in conflict.candidates
+            if c["fact_id"] == candidate_fact_id
+            and candidate_source in (None, c.get("source", "reported_fact"))
+        ]
+        if not matches:
+            raise DatasetError(f"Fact {candidate_fact_id} is not a candidate of {conflict_key}")
+        if len(matches) > 1:
+            raise DatasetError(
+                f"Id {candidate_fact_id} matches several candidates of {conflict_key}; "
+                "name the candidate source (reported_fact or import_value)"
+            )
+        # Import datasets record the id space explicitly (D57); SEC datasets have one.
+        candidate_source = (
+            matches[0].get("source", "reported_fact") if dataset.basis == IMPORT_BASIS else None
+        )
+    else:
+        candidate_source = None
     if action == "enter_value" and (value is None or not (source_reference or "").strip()):
         raise DatasetError("enter_value needs a value and a source reference")
     if action == "override" and conflict.kind == "within_filing":
@@ -688,6 +899,7 @@ def resolve_conflict(
         conflict_key=conflict_key,
         action=action,
         candidate_fact_id=candidate_fact_id if action == "select_candidate" else None,
+        candidate_source=candidate_source,
         value=value if action == "enter_value" else None,
         source_reference=source_reference.strip()
         if action == "enter_value" and source_reference
@@ -720,6 +932,7 @@ def resolve_conflict(
             "resolution_id": resolution.id,
             "action": action,
             "candidate_fact_id": resolution.candidate_fact_id,
+            "candidate_source": resolution.candidate_source,
             "value": None if value is None else str(value),
             "source_reference": resolution.source_reference,
         },
@@ -736,16 +949,19 @@ def rebuild_draft(
     mapping_version: str,
     reason: str,
     user_id: uuid.UUID | None = None,
+    basis: str = BASIS,
 ) -> BuildResult:
-    """Discard the company's open draft (if any) and build a new one with the current facts
-    and resolutions, keeping its selection policy and cut-off. Locked versions stay as
-    they are; the new draft's parent is the latest locked version."""
-    current = _current(db, company.id)
+    """Discard the company's open draft of ``basis`` (if any) and build a new one with the
+    current inputs and resolutions, keeping its selection policy and cut-off (for imports:
+    the SEC comparison cut-off; the import cut-off advances to the latest import). Locked
+    versions stay as they are; the new draft's parent is the latest locked version."""
+    current = _current(db, company.id, basis)
     policy, as_of = Policy.LATEST_REPORTED, None
     if current is not None and current.status == "draft":
         policy, as_of = Policy(current.selection_policy), current.facts_as_of
         discard_dataset(db, current.id, reason=_meaningful(reason), user_id=user_id)
-    return build_dataset(
+    build = build_import_dataset if basis == IMPORT_BASIS else build_dataset
+    return build(
         db,
         company,
         mappings_root=mappings_root,

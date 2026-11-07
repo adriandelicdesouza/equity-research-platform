@@ -1,95 +1,54 @@
 # Next Session Handoff
 
-**Updated:** 2026-11-07, end of Session 4. Authoritative entry point (`CLAUDE.md`). Details: `SESSION_LOG.md`, `DECISIONS.md` (D1–D56, pending P1–P14), `KNOWN_LIMITATIONS.md` (§4c–§4k), `docs/operations/`.
+**Updated:** 2026-11-07, end of Session 5. Authoritative entry point (`CLAUDE.md`). Details: `SESSION_LOG.md`, `DECISIONS.md` (D1–D57, pending P1–P14), `KNOWN_LIMITATIONS.md` (§4c–§4l), `docs/operations/`.
 
 ## Verified state (2026-11-07)
 
-- **Branch `m2-ingestion`.** HEAD is this handoff commit, on top of `9d540cd`. Working tree clean.
-- **11 local commits, none pushed.** `origin/m2-ingestion` = `51cd1fa`, last push 2026-11-06. In order:
-  - `0ddb473` publication record;
-  - `cccfc04` mapping v1 (D49);
-  - `2ecf98f` datasets (D50);
-  - `23ff73c` checks/derivations (D51);
-  - `0f5ee7f` conflicts (D52);
-  - `988f666` classification (D53);
-  - `7fb9bf3` market-data boundary (D54);
-  - `370255b` handoff;
-  - `2e45758` CSV import (D55);
-  - `9d540cd` listing registration (D56);
-  - this handoff.
-- **`main`** = `9ef5594` (M0 + M1). A future merge will conflict on `README.md`: keep the `m2-ingestion` version.
-- **Dev stack stopped.** The dev DB was last checked at the end of Session 4, and nothing has run since:
-  - Alembic **`0012`**;
-  - 6 SEC companies, 88,160 facts; 7 listings (from SEC), none with a declared currency;
-  - one verified draft dataset per company, none locked;
-  - open material conflicts: MSFT 6, RY 5, AAPL 6;
-  - 6 classification suggestions, none confirmed;
-  - 0 prices, 0 imports, 0 manual registrations.
-- **All 7 providers disabled** (`yahoo_chart` and `manual_import` included).
-- **Last `make check`** (on `9d540cd`): backend 440, engine 109, frontend 2, all passing.
+- **Branch `m2-ingestion`.** HEAD is the Session 5 commit `feat(m2): financial-statement import …` on top of `e8cb956`. Working tree clean after it.
+- **12 local commits, none pushed.** `origin/m2-ingestion` = `51cd1fa` (last push 2026-11-06). Session 5 added one commit.
+- **`main`** = `9ef5594` (M0 + M1). A future merge conflicts on `README.md`: keep the `m2-ingestion` version.
+- **Dev stack stopped.** The dev DB was checked live this session:
+  - Alembic **`0013`**;
+  - 6 SEC companies, 88,160 facts; 7 listings, none with a currency;
+  - 6 SEC drafts, none locked, all re-verified byte-identically after the refactor;
+  - open material conflicts AAPL 6, MSFT 6, RY 5;
+  - **0 statement imports**, 0 prices, 0 market imports, 0 registrations.
+- **All 7 providers disabled.**
+- **`make check`:** backend 499, engine 109, frontend 2, all passing.
 
 ## Capabilities
 
 | Area | Status |
 |---|---|
-| SEC ingestion, archive-first provenance (D42–D46) | Implemented; 6 companies ingested live in Session 3 (owner-approved User-Agent) |
-| Line-item mapping v1/v2 (D49, D51) | Implemented; tested on real archived SEC facts |
-| Versioned datasets: periods, lifecycle, byte-identical rebuilds (D50) | Implemented and tested; drafts exist, **none locked** |
-| Integrity checks, derived values (Q4, formulas, LTM, FCF) (D51) | Implemented and tested |
-| Conflict detection and audited resolution (D52) | Implemented; open conflicts block locking |
-| Financial classification, suggest + confirm (D53) | Implemented; **no confirmations** |
-| Market-data provider boundary, split adjustment (D54) | Implemented, tested offline |
-| Yahoo chart adapter (D54) | Tested on **synthetic** payloads only; **disabled; live semantics unverified** (P9) |
-| Append-only price, corporate-action and listing-snapshot storage (`0010`) | Implemented, tested |
-| CSV price and corporate-action import (D55, `0011`) | Implemented, tested on `erp_test`; no real file imported |
-| Manual listing registration (D56, `0012`) | Implemented, tested on `erp_test` (RY/XTSE → CSV validation); nothing registered in dev |
+| SEC ingestion, mapping v1/v2, datasets, checks, conflicts, classification (D42–D53) | Implemented; tested on real archived SEC data |
+| Market-data boundary, Yahoo adapter (D54) | Synthetic payloads only; **disabled; unverified** (P9) |
+| CSV price / corporate-action import (D55); manual listings (D56) | Implemented, tested on `erp_test` |
+| **Financial-statement CSV import (D57, `0013`)** | Implemented, tested on `erp_test`: `statement-import-validate` → `statement-import --expect-sha256` → draft `reported` dataset (`manual_import` provenance, cross-import/SEC conflicts, D51 checks, verify/lock). Dev: read-only smoke test only. Guide: `docs/operations/financial-statement-import.md` |
 
-## Outstanding limitations (details in KNOWN_LIMITATIONS)
+## Outstanding limitations
 
-- Yahoo stays disabled and unverified: close basis, adjusted-close method, dividend currency and registered provider symbols (§4i, §4k).
-- Market prices, corporate actions and split-adjusted shares **do not feed datasets or valuations**, so the Apple EPS mismatches remain open (§4i).
-- **No financial-statement file import** (§4.6).
-- `.xlsx` needs an approved dependency (P14). CSV only.
-- Other gaps:
-  - SEC submissions history is limited to `filings.recent`;
-  - extension concepts are absent from companyfacts, so items such as CNQ capex stay missing;
-  - no stub periods;
-  - classification evidence is balance-sheet only;
-  - no correction workflow for imports or registrations;
-  - CLI only, with no API or UI for M2 features.
-- Owner decisions open:
-  - P9: live requests to each provider;
-  - P13: imports allowed while `manual_import` is disabled;
-  - P14: XLSX;
-  - P2–P5: deployment.
+- **Statement import** (§4l): CSV only (P14); no segments, metrics, stubs or FY-end changes; corrections by re-import plus conflict resolution; SEC datasets are not compared with imports.
+- **Market data:** Yahoo disabled and unverified; prices, actions and datasets don't feed valuations yet.
+- **Other:** `filings.recent` only; extension concepts missing; CLI only (no API/UI for M2).
+- **Owner decisions open:** P9 (live provider requests), P13 (file imports with `manual_import` disabled, now covering statements), P14 (XLSX), P2–P5 (deployment).
 
-## Next milestone: financial-statement import (Blueprint §4.6)
+## Next milestone (recommended): finish M2 offline — rates, FX and reference data
 
-**Implement the working vertical slice. This is not a planning-only task.**
+Blueprint §14.1 M2 still lists:
 
-1. **Reconcile the specs first.**
-   - §4.6 is a versioned template: rows = standard line-item codes, columns = fiscal periods, plus metadata (company, currency, scale, accounting standard, source document and page). It validates codes, periods, numeric types and scale, runs integrity checks, and creates a `reported` dataset with `provenance_kind = manual_import` linked to the hash-verified file.
-   - §4.2 lists `csv_import` / `excel_import` for statements and prices.
-   - D16 covers prices only. That part is done (D55).
+1. **Treasury / Bank of Canada rates and FX:**
+   - adapters plus `market.rate_series` / `rate_observations` / `fx_rates`, following the D54 pattern (archive-first, parse separately);
+   - seeded **disabled**, tested on synthetic payloads only;
+   - first live request needs P9.
+2. **Damodaran reference datasets** (ERP, CRP, betas, spreads): versioned `ref.reference_datasets` loaded from an archived file via the D55/D57 validate → `--expect-sha256` pattern.
+3. Then **M3** (API + workflow UI over datasets, conflicts and imports).
 
-   Record the result as D57.
-2. **Reuse, don't duplicate:**
-   - `market/tabular.py` (format boundary; CSV now);
-   - `source.imports` + archive + `--expect-sha256` validate-then-ingest (D55);
-   - mapping sets / `ref.standard_line_items` for code validation;
-   - `standardization/periods.py` for fiscal periods;
-   - `checks` / `validation_results`, the dataset lifecycle in `datasets.py` (draft → verify → lock, hashes), conflict detection and resolutions (D52), and audit.
-3. **Schema facts to resolve:**
-   - `fin.financial_values.provenance_kind` allows only `reported` / `derived` / `analyst` (`0008`), and there is no `import_id`;
-   - `financial_datasets.basis` allows `reported` already;
-   - datasets require `mapping_version`, `taxonomy`, `facts_as_of` and `input_sha256`. Define their meaning for imports.
-4. **Overlap with SEC data:** imported values that overlap SEC data must become §10.3 conflicts, never silent overwrites. Target companies include TSX-only issuers (registered via D56).
-5. **Tests:** offline tests on `erp_test` only. No synthetic data in the dev DB.
+Reuse `market/tabular.py`, `source.imports`, the archive, `audit.record` and the provider gate. Record the design as D58.
 
 ## Rules
 
 - `m2-ingestion` only. **No push, merge, rebase or history rewrite**, no provider activation or network requests, and no new dependencies without approval.
-- Don't lock datasets, confirm classifications or conflicts, register listings, or declare currencies on the owner's behalf.
+- Don't lock datasets, confirm classifications or conflicts, import statements, register listings, or declare currencies on the owner's behalf. No synthetic data in the dev DB: tests use `erp_test`.
 - Before each commit, check the staged diff against the `FORBIDDEN` patterns in the backup `sanitize.py` (path in local Claude memory, D48).
 - Run `make check` at each milestone, update this file and `SESSION_LOG.md`, and stop the stack afterwards.
 
@@ -98,19 +57,19 @@
 ```bash
 cd ~/equity-research-platform
 git switch m2-ingestion && git status --short && git log --oneline -3
-git rev-list --count origin/m2-ingestion..HEAD   # expect 11
-make up-dev        # background; several minutes; migrations to 0012
-make check         # expect backend 440, engine 109, frontend 2
+git rev-list --count origin/m2-ingestion..HEAD   # expect 12
+make up-dev        # background; several minutes; migrations to 0013
+make check         # expect backend 499, engine 109, frontend 2
 make down-dev      # when finished
 ```
 
-The CLI runs as `docker exec [-i] erp-dev-worker-1 python -m erp_backend.cli <cmd>`. Commands:
+The CLI runs as `docker exec [-i] erp-dev-worker-1 python -m erp_backend.cli <cmd>`. Command groups:
 
 - **SEC:** `sec-*`.
-- **Datasets:** `dataset-build|list|verify|lock|discard|rebuild`.
+- **Datasets:** `dataset-build|list|verify|lock|discard|rebuild` (`--basis standardized|reported`).
 - **Conflicts:** `conflict-list|resolve`.
 - **Classification:** `classify`, `classification-confirm`.
-- **Market imports:** `market-import-validate|market-import|market-import-list`.
-- **Listings:** `listing-validate|register|list|show`, `listing-set-currency`.
+- **Imports:** `market-import-*`, `statement-import-*`.
+- **Listings:** `listing-*`, `listing-set-currency`.
 
 Tooling: `.tools/bin/uv run --all-packages …`. A DB query from the host: `docker exec erp-dev-db-1 psql -U postgres -d erp -Atc "…"`.

@@ -542,6 +542,57 @@ These refine the approved architecture. None changes an approved methodology dec
   These rules are enforced in the application, under the lock. **No new DB unique index** over ticker + MIC: the SEC path (unchanged) could legitimately meet a recycled ticker, and the CSV import already refuses ambiguous listings.
 - **Manual listings are `is_primary = false`.** Primary-listing designation is not part of this workflow.
 
+### D57. Financial-statement file import: `reported` datasets from hash-verified files (§4.6, §4.2, §3.3, §10.1, §10.3; D16, D50–D52, D55, D56)
+- **Specs reconciled:**
+  - §4.6 is the authority: a versioned template (line-item codes × fiscal periods, plus metadata), validation, integrity checks, then a `reported` dataset with `provenance_kind = manual_import` linked to the hash-verified file.
+  - §4.2's `csv_import` / `excel_import` "statements and prices" splits into D55 (prices, done) and this decision (statements).
+  - D16 covers prices only.
+- **Template `financial_statements.v1`** (CSV; one grid so a future XLSX sheet maps 1:1):
+  - header `item, <period columns>…[, source_page]`;
+  - metadata rows: issuer ticker + MIC, currency, `scale`, `share_scale`, accounting standard, source document, optional mapping version;
+  - period rows: type, fiscal year, start, end, optional per-column document;
+  - line-item rows: a standard code or an exact standard label.
+
+  Full format: `docs/operations/financial-statement-import.md`; blank template: `templates/financial/`.
+- **Nothing is guessed:**
+  - the issuer must exist (ticker + MIC → one listing; imports never create issuers);
+  - the currency must equal the company's declared reporting currency, never converted;
+  - scales are declared;
+  - a declared accounting standard must match (an inferred one only warns);
+  - every period column must be the fiscal period it claims, against the stored and file fiscal years (D50 labels). Fiscal-year overlaps and calendar changes are refused.
+- **Values** are entered in the platform sign convention. `reported_value` and the scale are kept, and `value = reported_value × 10^scale` is enforced by a CHECK. Per-share amounts are never scaled.
+- **Record statuses** (validation only reads): `accepted`, `conflicting`, `duplicate`, `unmapped`, `ambiguous` (a label naming several items, or one cell twice in the file with different values; neither used), `rejected`.
+- **Ingestion** (D55 conventions):
+  - It re-validates under an advisory lock and needs `--expect-sha256`.
+  - Skipped records are refused without `--allow-partial`; **conflicting records without `--allow-conflicts`**.
+  - It archives the bytes and writes one `source.imports` row (reused unchanged; template `financial_statements.v1`), the stored cells and the audit event `financial_statements_imported`, then builds the next draft, in one transaction.
+  - Identical re-imports store nothing.
+- **Schema (`0013`):**
+  - `source.statement_import_values` (append-only);
+  - `fin.financial_values`: `manual_import` provenance plus `import_id` + `import_value_id`, both set exactly for `manual_import`, with a composite FK;
+  - `fin.financial_datasets.import_cutoff_id`, required iff `basis = 'reported'`;
+  - conflict kinds `cross_source` / `cross_import`;
+  - `fin.conflict_resolutions.candidate_source`.
+- **Dataset header fields for imports:**
+  - `basis = reported`, its own version line;
+  - `taxonomy = standard`, since the input codes are the standard items;
+  - `mapping_version`: the version the codes were validated against;
+  - `selection_policy`: which import wins when several supply a cell (`latest_reported` default, `first_reported`);
+  - `facts_as_of`: the **SEC comparison cut-off** (latest SEC filing by default; without SEC facts, the date of the latest import);
+  - `input_sha256`: the eligible records plus the SEC reference fingerprint;
+  - `import_cutoff_id` + `resolution_cutoff_id` make rebuilds exact;
+  - format versions are per basis (import format 1).
+
+  SEC canonical bytes are unchanged: the new optional fields are serialized only when set. All six dev SEC drafts re-verified byte-identically.
+- **Conflicts with existing data** (§7.2, §10.3; never overwritten):
+  - **`cross_import`:** imports disagree.
+  - **`cross_source`:** the SEC latest-reported value for the same window (unchanged SEC build, no resolutions) differs. The SEC fact becomes a candidate.
+
+  The D52 materiality, statuses, resolutions and lock gate are reused. `select_candidate` names the id space when ambiguous. Resolutions rebuild the `reported` draft. The SEC `standardized` lineage is not modified by imports.
+- **Checks and derivations** are D51's. SUBTOTAL now also checks imported parents: before, it checked `reported` only, and imported subtotals would otherwise go unchecked. Existing outputs are unchanged.
+- **Interim coverage** for imports is `partial` whenever interim columns exist, never `full` (conservative; D44's completeness rule is not applied to imports yet).
+- **Provider gate:** like D55, the import runs with `manual_import` disabled (P13 covers both).
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)
@@ -575,5 +626,5 @@ Status as of 2026-11-06 (end of Session 3).
 | P10 | **License** | **Resolved** 2026-11-06: MIT (owner's choice), `LICENSE`, copyright Adrian Delic de Souza |
 | P11 | **Public vs internal documentation** structure (`CLAUDE.md`, session logs, handoff, decision log) | **Resolved** 2026-11-06: owner keeps the current structure; internal docs are published as is |
 | P12 | **Publication**: push of `main`, `m2-ingestion`, `m0-foundation` and `m1-engine` to `origin` | **Resolved** 2026-11-06: owner-approved; pushed without force, `main` is the default branch |
-| P13 | **Provider gate for file imports** (D55): file imports run with `manual_import` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
+| P13 | **Provider gate for file imports** (D55, D57): market-data and financial-statement file imports run with `manual_import` disabled, because `enabled` gates network retrieval only | Open: owner review (Session 4). Reversible: requiring `enabled` would be a one-line check in `file_import.ingest` |
 | P14 | **Spreadsheet dependency for `.xlsx` import** (e.g. `openpyxl`) | Open: needed only when XLSX import is wanted; CSV works without it |

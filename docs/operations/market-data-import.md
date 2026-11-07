@@ -2,7 +2,7 @@
 
 Decision D55; Blueprint §4.2 (`csv_import`), §4.6, §3.3 (`source.imports`), §10.1 (`manual_import` provenance); D16 (manual price import as the Yahoo fallback).
 
-This imports **daily prices and corporate actions for existing listings**. Financial-statement import (the §4.6 line-item template that creates a `reported` dataset) is a separate, later workflow.
+This imports **daily prices and corporate actions for existing listings**. Financial-statement import (the §4.6 line-item template that creates a `reported` dataset) is a separate workflow: `financial-statement-import.md` (D57).
 
 ## Workflow
 

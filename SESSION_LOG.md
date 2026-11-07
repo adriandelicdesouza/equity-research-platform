@@ -521,3 +521,32 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - the §4.6 statement-import milestone, with the reconciliation (§4.6/§4.2/D16), the infrastructure to reuse, and the schema facts to resolve (`provenance_kind` allows only reported/derived/analyst, no `import_id` on values, required dataset header fields);
   - start-up commands.
 - **No code or database changes.** `make check` was not re-run; the last result (backend 440, engine 109, frontend 2) is from `9d540cd`.
+
+### Session 5 — M2 financial-statement import (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `e8cb956`, clean, 11 commits ahead of `origin/m2-ingestion` (`51cd1fa`), none pushed. After `make up-dev`, the dev DB matched the handoff live:
+  - Alembic `0012`;
+  - all 7 providers disabled;
+  - 6 companies, 88,160 facts, 7 listings without currency;
+  - 6 SEC drafts, none locked;
+  - open material conflicts AAPL 6, MSFT 6, RY 5;
+  - 0 imports, prices or registrations.
+
+  Baseline `make check`: backend 440, engine 109, frontend 2. No discrepancy.
+- **Specs reconciled (D57):** §4.6 is authoritative for statements; §4.2 splits into D55 (prices) and D57; D16 is prices only.
+- **Built:**
+  - migration `0013`:
+    - `source.statement_import_values` (append-only; normalization CHECK);
+    - `manual_import` provenance with `import_id` + `import_value_id` on `fin.financial_values` (iff CHECK, composite FK);
+    - `financial_datasets.import_cutoff_id` (iff `basis = 'reported'`);
+    - conflict kinds `cross_source` / `cross_import`;
+    - `conflict_resolutions.candidate_source`;
+  - `statements/template.py` (pure `financial_statements.v1` parser: code or label mapping, scale and unit, sign and placement checks, in-file duplicates and conflicts);
+  - `statements/file_import.py` (issuer, currency, standard and fiscal-calendar checks; comparison with stored imports and SEC latest-reported values; locked, hash-confirmed ingestion that builds the draft);
+  - `standardization/imported.py` (pure `reported` dataset build reusing D52 materiality and conflict types and D51 derivations and checks);
+  - `datasets.py`: shared version persistence, basis-aware lifecycle, verify dispatch, `rebuild_draft(basis=…)`, `resolve_conflict(candidate_source=…)`;
+  - CLI `statement-import-validate`, `statement-import`, `statement-import-list`, `statement-import-show`; `--basis` on `dataset-build` / `dataset-rebuild`; `--candidate-source` on `conflict-resolve`;
+  - blank template `templates/financial/financial_statements.v1.csv`, `docs/operations/financial-statement-import.md`, D57, KNOWN_LIMITATIONS §4l.
+- **Defect found and fixed:** the D51 SUBTOTAL check only evaluated `reported` parents, so imported subtotals would have gone unchecked. It now also checks `manual_import` parents; SEC outputs are unchanged.
+- **Dev DB:** migrated `0012 → 0013` via `make up-dev`, with no data written. All 6 SEC drafts re-verified byte-identically with the refactored code (stored rows, checks, rebuild). A read-only `statement-import-validate` in the worker, using AAPL FY2026 revenue copied from its own SEC dataset, resolved the 52/53-week fiscal year, compared with SEC (equal → accepted) and flagged an unknown code. Import and audit counts were unchanged.
+- **Tests:** 59 new (backend 440 → 499), synthetic and on `erp_test` only. No network requests; all providers stay disabled.
