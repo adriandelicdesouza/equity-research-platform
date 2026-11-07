@@ -193,13 +193,23 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **CSV only.** `.xlsx` needs a spreadsheet dependency (owner approval); until then it is refused with a message to export as CSV.
 - **CLI only:** no API endpoint or UI yet. The worker mounts only the raw archive, so files are passed on stdin (`--file -`). The importing user is not recorded from the CLI (`imported_by` is empty, as with other CLI actions).
 - **Existing listings only:**
-  - imports never create listings, so a TSX listing (e.g. `RY` on `XTSE`) must exist first, and manual listing entry (D15) is not built;
+  - imports never create listings, so a TSX listing (e.g. `RY` on `XTSE`) must be registered first (`listing-register`, D56, §4k);
   - the six SEC listings have **no declared trading currency**, so the analyst must run `listing-set-currency` before importing (nothing was set on their behalf).
 - **No revision path:** a corrected value for an already-imported date is reported as a conflict and skipped. Revising imported data (with a reason, as a new observation) is future work.
 - **Corporate-action keys:** one action per listing, kind and ex-date. Two cash dividends on the same ex-date (e.g. regular + special) conflict; there is no `special_dividend` kind yet. Splits are compared by numerator and denominator as written, so `4,1` vs `8,2` is reported as a conflict.
 - **Currency list:** codes are checked for ISO 4217 form and minor-unit codes, not against a reference table of active currencies (there is no `ref.currencies` yet). Prices are protected by the equality check against the listing's declared currency; dividend currencies rely on the form check.
 - **Calendar:** weekend dates are warned, not rejected. Exchange holiday calendars are not checked.
 - **Imported prices are not wired** into valuations or dataset builds, the same as provider prices (§4i).
+
+## 4k. Manual listing registration (M2, Session 4)
+
+- **CLI only**, with no API or UI. `registered_by` is empty from the CLI.
+- **Exchange registry** is code-level and small (XNYS, XNAS, XASE, ARCX, XTSE, XTSX); `ref.exchanges` is not built. OTC, CBOE and non-North-American venues are refused for manual registration (the SEC path still stores what EDGAR reports).
+- **No symbol validation against a provider:** Blueprint §4.3 step 4 (fetch a short history and confirm the currency and exchange) needs live Yahoo access (P9). Registered provider symbols are therefore **unverified**.
+- **No edit, retire or merge** of listings or issuers. A wrong registration cannot be corrected through the application yet: the row stays, and a correction workflow, which would be another append-only record, is future work.
+- **Issuer matching** compares normalized names and tickers only, so differently worded legal names, such as "Royal Bank of Canada" vs "RBC", are not caught. `--confirm-new-issuer` relies on the analyst.
+- **ISIN** is checked for format and check digit only, not against an external register.
+- **Dev DB:** nothing is registered. RY on XTSE is tested only on `erp_test` with synthetic prices.
 
 ## 5. Unresolved items
 

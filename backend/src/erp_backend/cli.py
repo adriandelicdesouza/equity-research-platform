@@ -612,6 +612,176 @@ def _listing_set_currency(args: argparse.Namespace) -> int:
     return 0
 
 
+def _listing_proposal(args: argparse.Namespace) -> object:
+    """Build a ListingProposal from CLI arguments, or return an error message (str)."""
+    import uuid
+
+    from erp_backend.market.registration import IssuerRef, ListingProposal, NewIssuer
+
+    symbols: dict[str, str] = {}
+    for item in args.provider_symbol:
+        code, sep, symbol = item.partition("=")
+        if not sep or not code.strip() or not symbol.strip():
+            return f"--provider-symbol {item!r}: expected PROVIDER=SYMBOL"
+        if code.strip() in symbols:
+            return f"--provider-symbol given twice for {code.strip()}"
+        symbols[code.strip()] = symbol.strip()
+    same = None
+    if args.same_issuer_as:
+        ticker, sep, mic = args.same_issuer_as.partition(":")
+        if not sep or not ticker or not mic:
+            return f"--same-issuer-as {args.same_issuer_as!r}: expected TICKER:MIC"
+        same = (ticker, mic)
+    company_id = None
+    if args.company_id:
+        try:
+            company_id = uuid.UUID(args.company_id)
+        except ValueError:
+            return f"--company-id {args.company_id!r} is not a UUID"
+    new = None
+    if args.new_issuer:
+        new = NewIssuer(
+            legal_name=args.legal_name or "",
+            country=args.country or "",
+            common_name=args.common_name,
+            reporting_currency=args.reporting_currency,
+        )
+    elif any((args.legal_name, args.country, args.common_name, args.reporting_currency)):
+        return "--legal-name/--country/--common-name/--reporting-currency need --new-issuer"
+    return ListingProposal(
+        ticker=args.ticker,
+        mic=args.mic,
+        currency=args.currency,
+        security_type=args.security_type,
+        issuer=IssuerRef(company_id=company_id, same_issuer_as=same, cik=args.cik, new=new),
+        source_name=args.source,
+        reason=args.reason,
+        share_class=args.share_class,
+        isin=args.isin,
+        source_reference=args.source_reference,
+        provider_symbols=symbols,
+        confirm_new_issuer=args.confirm_new_issuer,
+    )
+
+
+def _print_check(check: object) -> None:
+    from erp_backend.market.registration import RegistrationCheck
+
+    assert isinstance(check, RegistrationCheck)
+    listing = check.listing
+    print(
+        f"listing   {listing['ticker']} {listing['exchange_mic']} "
+        f"({listing['exchange_name'] or 'unknown exchange'})"
+    )
+    print(f"currency  {listing['trading_currency'] or '-'}")
+    instrument = [listing["security_type"], listing["share_class"], listing["isin"]]
+    print(f"security  {' / '.join(str(x) for x in instrument if x)}")
+    issuer = check.issuer
+    if issuer.get("mode") == "new":
+        print(f"issuer    NEW: {issuer['legal_name']} ({issuer['country']})")
+    elif issuer.get("company_id"):
+        print(f"issuer    {issuer['legal_name']} ({issuer['company_id']}) via {issuer['mode']}")
+    else:
+        print("issuer    unresolved")
+    symbols = listing["provider_symbols"]
+    print(f"symbols   {', '.join(f'{k}={v}' for k, v in symbols.items()) or 'none'}")
+    for code, symbol in check.suggested_provider_symbols.items():
+        if code not in symbols:
+            print(f"suggested {code}={symbol} (D15 rule; not stored unless given)")
+    for e in check.errors:
+        print(f"ERROR     {e.code}: {e.message}")
+    for w in check.warnings:
+        print(f"warning   {w.code}: {w.message}")
+    print("result    " + ("valid" if check.ok else f"{len(check.errors)} error(s)"))
+
+
+def _listing_validate(args: argparse.Namespace) -> int:
+    import json
+
+    from erp_backend.db import new_session
+    from erp_backend.market.registration import check_listing
+
+    proposal = _listing_proposal(args)
+    if isinstance(proposal, str):
+        print(f"error: {proposal}", file=sys.stderr)
+        return 1
+    with new_session() as db:
+        check = check_listing(db, proposal)  # type: ignore[arg-type]
+        db.rollback()  # validation never writes
+    if args.json:
+        print(json.dumps(check.as_dict(), indent=2, sort_keys=True))
+    else:
+        _print_check(check)
+    return 0 if check.ok else 1
+
+
+def _listing_register(args: argparse.Namespace) -> int:
+    from erp_backend.db import new_session
+    from erp_backend.market.registration import RegistrationRefusedError, register_listing
+
+    proposal = _listing_proposal(args)
+    if isinstance(proposal, str):
+        print(f"error: {proposal}", file=sys.stderr)
+        return 1
+    with new_session() as db:
+        try:
+            result = register_listing(db, proposal)  # type: ignore[arg-type]
+        except RegistrationRefusedError as exc:
+            db.rollback()
+            print(f"refused (nothing written): {exc}", file=sys.stderr)
+            return 1
+        db.commit()
+        s = result.security
+        print(
+            f"registered {s.ticker} {s.exchange_mic} ({s.trading_currency}) as listing {s.id}; "
+            f"issuer {result.company.legal_name} ({result.company.id}"
+            f"{', created' if result.company_created else ''}); "
+            f"registration {result.registration_id}"
+        )
+        for w in result.check.warnings:
+            print(f"warning   {w.code}: {w.message}")
+    return 0
+
+
+def _listing_list(ticker: str | None) -> int:
+    from erp_backend.db import new_session
+    from erp_backend.market.registration import list_listings, registered_ids
+    from erp_backend.models import Company
+
+    with new_session() as db:
+        registered = registered_ids(db)
+        rows = list_listings(db, ticker)
+        for s in rows:
+            company = db.get(Company, s.company_id)
+            print(
+                f"{s.ticker:<8} {s.exchange_mic or '-':<5} {s.trading_currency or '-':<4} "
+                f"{s.security_type or '-':<18} {'manual' if s.id in registered else 'sec':<7} "
+                f"{s.id}  {company.legal_name if company else s.company_id}"
+            )
+        if not rows:
+            print("no listings")
+    return 0
+
+
+def _listing_show(ticker: str, mic: str) -> int:
+    import json
+
+    from erp_backend.db import new_session
+    from erp_backend.market.listings import find_listings
+    from erp_backend.market.registration import describe_listing
+
+    with new_session() as db:
+        found = find_listings(db, ticker, mic)
+        if len(found) != 1:
+            print(
+                f"error: {len(found)} listings match {ticker.upper()} {mic.upper()}",
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(describe_listing(db, found[0]), indent=2, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="erp_backend.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -728,6 +898,53 @@ def main(argv: list[str] | None = None) -> int:
     lsc.add_argument("--mic", required=True, help="exchange MIC, e.g. XNAS, XNYS, XTSE")
     lsc.add_argument("--currency", required=True, help="ISO 4217 code, e.g. USD, CAD")
     lsc.add_argument("--reason", required=True)
+    for name, text in (
+        ("listing-validate", "Check a proposed listing registration (no writes)."),
+        ("listing-register", "Register a listing explicitly (audited, append-only record)."),
+    ):
+        lr = sub.add_parser(name, help=text)
+        lr.add_argument("--ticker", required=True)
+        lr.add_argument("--mic", required=True, help="exchange MIC, e.g. XTSE, XTSX, XNYS, XNAS")
+        lr.add_argument("--currency", required=True, help="trading currency (ISO 4217)")
+        lr.add_argument(
+            "--security-type",
+            required=True,
+            choices=[
+                "common_equity",
+                "preferred_equity",
+                "depositary_receipt",
+                "fund_unit",
+                "other",
+            ],
+        )
+        lr.add_argument("--share-class")
+        lr.add_argument("--isin")
+        lr.add_argument(
+            "--provider-symbol", action="append", default=[], help="PROVIDER=SYMBOL (repeatable)"
+        )
+        lr.add_argument("--company-id", help="existing issuer")
+        lr.add_argument("--same-issuer-as", help="TICKER:MIC of an existing listing of the issuer")
+        lr.add_argument("--cik", type=int, help="issuer by SEC CIK")
+        lr.add_argument("--new-issuer", action="store_true", help="create the issuer")
+        lr.add_argument("--legal-name")
+        lr.add_argument("--common-name")
+        lr.add_argument("--country", help="issuer country (ISO 3166-1 alpha-2)")
+        lr.add_argument("--reporting-currency")
+        lr.add_argument(
+            "--confirm-new-issuer",
+            action="store_true",
+            help="proceed although an existing issuer looks similar",
+        )
+        lr.add_argument("--source", required=True, help="what supports the registration")
+        lr.add_argument("--source-reference", help="URL, document or note")
+        lr.add_argument("--reason", required=True)
+        if name == "listing-validate":
+            lr.add_argument("--json", action="store_true")
+    ll = sub.add_parser("listing-list", help="List issuers' exchange listings.")
+    ll.add_argument("--ticker")
+    lsh = sub.add_parser("listing-show", help="Show one listing with its provenance.")
+    lsh.add_argument("--ticker", required=True)
+    lsh.add_argument("--mic", required=True)
     args = parser.parse_args(argv)
     if args.command == "create-user":
         return _create_user(args)
@@ -764,6 +981,14 @@ def main(argv: list[str] | None = None) -> int:
         return _market_import_list(args.limit)
     if args.command == "listing-set-currency":
         return _listing_set_currency(args)
+    if args.command == "listing-validate":
+        return _listing_validate(args)
+    if args.command == "listing-register":
+        return _listing_register(args)
+    if args.command == "listing-list":
+        return _listing_list(args.ticker)
+    if args.command == "listing-show":
+        return _listing_show(args.ticker, args.mic)
     if args.command == "sec-standardize-report":
         return _sec_standardize_report(args.ticker, args.years, args.policy, args.as_of, args.all)
     return 2  # pragma: no cover

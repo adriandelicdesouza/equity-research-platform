@@ -490,3 +490,18 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - D55, P13 (provider gate for file imports, owner review), P14 (XLSX dependency), KNOWN_LIMITATIONS §4j.
 - **Dev DB:** migrated `0010 → 0011`. No import, price or currency data written. The read-only `market-import-validate` ran in the worker against the dev DB, and every row was rejected with the expected reasons: the SEC listings have no declared trading currency, plus an unknown listing, a bad date, a bad currency and a bad basis. A refused-ingest demonstration against the dev DB was blocked by the session's permission policy; that path is covered by tests on `erp_test`.
 - **Tests:** 88 new (backend 308 → 396), all on the disposable `erp_test` database. `make check` passes. No network requests; `yahoo_chart` and `manual_import` stay disabled.
+
+### Session 4, continued — M2 manual listing registration (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `2e45758`, clean, 9 commits ahead of origin, none pushed. Dev DB at `0011`, providers all disabled, 7 SEC listings without currencies, 0 imports. Baseline `make check`: backend 396, engine 109, frontend 2.
+- **Built:**
+  - migration `0012`: `securities.security_type` / `share_class` / `isin` (nullable, CHECKed) and append-only `market.listing_registrations`;
+  - `market/exchanges.py` (MIC registry with the currencies each exchange trades in);
+  - `market/registration.py` (read-only check, locked registration, explicit issuer resolution, duplicate, ISIN and provider-symbol guards, description);
+  - CLI `listing-validate`, `listing-register`, `listing-list`, `listing-show`;
+  - `docs/operations/listing-registration.md`; D56; KNOWN_LIMITATIONS §4k.
+- **Test bug found and fixed:** an owner-role `TRUNCATE` inside a test waited on the test's own uncommitted insert (lock wait). The run was stopped, no sessions were left behind, and the check moved to a separate test.
+- **Dev DB:** migrated `0011 → 0012`; nothing registered. Read-only `listing-validate` against dev data:
+  - RY / XTSE / CAD via `--same-issuer-as RY:XNYS` was valid;
+  - a `--new-issuer "Royal Bank of Canada"` proposal was refused (`possible_existing_issuer`, with an EUR currency error).
+- **Tests:** 44 new (backend 396 → 440), including the RY/XTSE CSV integration on `erp_test` with synthetic prices. `make check` passes. No network requests; all providers disabled.

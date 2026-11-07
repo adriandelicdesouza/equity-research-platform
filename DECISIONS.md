@@ -515,6 +515,33 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Provider gate:** `source.providers.enabled` gates **network retrieval** (D54: the client refuses while disabled). A file import makes no network request and is an explicit analyst action, so it does not require enabling `manual_import`. That row stays disabled and is used only as the provenance code. *(Proposed in Session 4; owner review requested.)*
 - **XLSX:** `market/tabular.py` is the format boundary: readers yield a `RawTable` of cell text, and everything downstream is format-agnostic. `.xlsx` is rejected with a clear message until a spreadsheet dependency is approved.
 
+### D56. Manual listing registration: one row per exchange listing, explicit issuer resolution (§4.3 step 3; D15, D55)
+- **Identity model kept, not duplicated:**
+  - issuer = `market.companies`;
+  - exchange listing = one `market.securities` row (ticker + MIC + trading currency + provider symbols);
+  - a cross-listed share is two listings under one issuer.
+
+  No separate instrument table. The instrument a listing represents is described by new nullable columns `security_type`, `share_class` and `isin` (migration `0012`). They are NULL on SEC-created rows, which never recorded them.
+- **Provenance:** `market.listing_registrations` (append-only; the app role has INSERT/SELECT only) holds:
+  - listing, issuer, and whether the issuer was created by the registration;
+  - the normalized proposal and accepted warnings;
+  - source name and reference, reason (≥ 10 characters), user and time.
+
+  Plus the audit event `listing_registered`. Existing rows are not modified.
+- **Workflow:** `listing-validate` reads only. `listing-register` re-checks under a transaction-scoped advisory lock on ticker + MIC and refuses on any error. `listing-list` and `listing-show` inspect.
+- **Nothing is guessed:**
+  - **Currency** is required and must be one the exchange trades in, from a code-level registry (`market/exchanges.py`: XNYS, XNAS, XASE, ARCX, XTSE, XTSX). The Blueprint's `ref.exchanges` table is deferred; other MICs are refused until added deliberately.
+  - **Issuer resolution** is required exactly once: company id, an existing listing of the issuer, SEC CIK, or `--new-issuer`. A new issuer whose name matches an existing company, or whose ticker is already listed anywhere, is refused unless `--confirm-new-issuer` is given, and the dismissed candidates are recorded.
+  - **Provider symbols** are stored only when given. The D15 Yahoo rule is a suggestion, and a differing symbol is a warning.
+- **Duplicate prevention:**
+  - ticker + MIC must be new (any issuer, any origin);
+  - one ISIN belongs to one issuer;
+  - one instrument per issuer per exchange (same ISIN, or same share class and type);
+  - a provider symbol maps to one listing.
+
+  These rules are enforced in the application, under the lock. **No new DB unique index** over ticker + MIC: the SEC path (unchanged) could legitimately meet a recycled ticker, and the CSV import already refuses ambiguous listings.
+- **Manual listings are `is_primary = false`.** Primary-listing designation is not part of this workflow.
+
 ## Public-release decisions (2026-11-06)
 
 ### D47. Git history rewritten for identity and infrastructure privacy (owner-approved)

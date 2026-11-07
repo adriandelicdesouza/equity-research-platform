@@ -60,7 +60,32 @@ class Security(Base):
     trading_currency: Mapped[str | None] = mapped_column(String(3))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     provider_symbols: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict)
+    # Instrument attributes (migration 0012); NULL on SEC-created rows (never recorded).
+    security_type: Mapped[str | None] = mapped_column(String(24))
+    share_class: Mapped[str | None] = mapped_column(String(16))
+    isin: Mapped[str | None] = mapped_column(String(12))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ListingRegistration(Base):
+    """Append-only record of a manual listing registration (D56)."""
+
+    __tablename__ = "listing_registrations"
+    __table_args__ = {"schema": "market"}  # noqa: RUF012
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    security_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.securities.id"))
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("market.companies.id"))
+    company_created: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    warnings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    registered_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("auth.users.id"))
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class CompanyIdentifier(Base):
