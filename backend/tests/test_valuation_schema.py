@@ -85,17 +85,36 @@ def _scenario(db: Session, project: ValuationProject, user: User, **kw: Any) -> 
 def _run(db: Session, fx: Fixture, p: ValuationProject, s: Scenario, user: User) -> ValuationRun:
     block = blocks_mod.current_block(db, "non_financial", "dcf_fcff")
     run = ValuationRun(
-        project_id=p.id, scenario_id=s.id, scenario_revision_no=1, company_id=fx.company.id,
-        listing_id=fx.listing.id, methodology="dcf_fcff", method_version="1.0.0",
-        produces="enterprise_value", dataset_id=fx.dataset.id,
-        dataset_version_no=fx.dataset.version_no, dataset_basis=fx.dataset.basis,
-        dataset_content_sha256=fx.dataset.content_sha256, block_id=block.id,
-        classification="non_financial", valuation_date=fx.period.end_date,
-        balance_sheet_date=fx.period.end_date, currency="USD", input_document={"x": 1},
-        input_sha256=SHA, engine_input_sha256=SHA, engine_version="0.1.0", module_versions={},
-        outputs={}, primary_value=Decimal(1), per_share_value=Decimal(1), validation=[],
-        warnings=[], output_sha256=SHA, created_by=user.id,
-    )  # fmt: skip
+        project_id=p.id,
+        scenario_id=s.id,
+        scenario_revision_no=1,
+        company_id=fx.company.id,
+        listing_id=fx.listing.id,
+        methodology="dcf_fcff",
+        method_version="1.0.0",
+        produces="enterprise_value",
+        dataset_id=fx.dataset.id,
+        dataset_version_no=fx.dataset.version_no,
+        dataset_basis=fx.dataset.basis,
+        dataset_content_sha256=fx.dataset.content_sha256,
+        block_id=block.id,
+        classification="non_financial",
+        valuation_date=fx.period.end_date,
+        balance_sheet_date=fx.period.end_date,
+        currency="USD",
+        input_document={"x": 1},
+        input_sha256=SHA,
+        engine_input_sha256=SHA,
+        engine_version="0.1.0",
+        module_versions={},
+        outputs={},
+        primary_value=Decimal(1),
+        per_share_value=Decimal(1),
+        validation=[],
+        warnings=[],
+        output_sha256=SHA,
+        created_by=user.id,
+    )
     db.add(run)
     db.flush()
     return run
@@ -193,10 +212,18 @@ def test_project_company_dataset_and_listing_must_match(db: Session, tmp_path: P
     other, other_listing = make_company(db, ticker="OTH")
     user = _user(db)
     p = _project(db, fx, user)
-    _refused(db, "UPDATE val.valuation_projects SET company_id = :c WHERE id = :p",
-             {"c": other.id, "p": p.id}, "immutable")  # fmt: skip
-    _refused(db, "UPDATE val.valuation_projects SET listing_id = :l WHERE id = :p",
-             {"l": other_listing.id, "p": p.id}, "does not belong")  # fmt: skip
+    _refused(
+        db,
+        "UPDATE val.valuation_projects SET company_id = :c WHERE id = :p",
+        {"c": other.id, "p": p.id},
+        "immutable",
+    )
+    _refused(
+        db,
+        "UPDATE val.valuation_projects SET listing_id = :l WHERE id = :p",
+        {"l": other_listing.id, "p": p.id},
+        "does not belong",
+    )
     with pytest.raises(DBAPIError, match="does not belong"), db.begin_nested():
         _project(db, Fixture(other, other_listing, fx.dataset, fx.period), user, name="X")
     _refused(db, "DELETE FROM val.valuation_projects WHERE id = :p", {"p": p.id}, DENIED)
@@ -221,8 +248,9 @@ def test_scenarios_one_base_same_project_no_delete(db: Session, tmp_path: Path) 
     other_base = _scenario(db, p2, user)
     with pytest.raises(DBAPIError, match="same project"), db.begin_nested():
         _scenario(db, p1, user, name="Bull", kind="bull", parent_scenario_id=other_base.id)
-    _refused(db, "UPDATE val.scenarios SET kind = 'bull' WHERE id = :s", {"s": base.id},
-             "immutable")  # fmt: skip
+    _refused(
+        db, "UPDATE val.scenarios SET kind = 'bull' WHERE id = :s", {"s": base.id}, "immutable"
+    )
     _refused(db, "DELETE FROM val.scenarios WHERE id = :s", {"s": base.id}, DENIED)
 
 
@@ -235,21 +263,36 @@ def test_assumption_revisions_are_append_only_and_hold_one_value(
     fx = setup(db, tmp_path)
     user = _user(db)
     s = _scenario(db, _project(db, fx, user), user)
-    rev = AssumptionRevision(scenario_id=s.id, scenario_revision_no=1, key="terminal_growth",
-                             value=Decimal("0.02"), unit="ratio",
-                             provenance_kind="analyst_assumption", status="approved",
-                             created_by=user.id)  # fmt: skip
+    rev = AssumptionRevision(
+        scenario_id=s.id,
+        scenario_revision_no=1,
+        key="terminal_growth",
+        value=Decimal("0.02"),
+        unit="ratio",
+        provenance_kind="analyst_assumption",
+        status="approved",
+        created_by=user.id,
+    )
     db.add(rev)
     db.flush()
-    _refused(db, "UPDATE val.assumption_revisions SET value = 0.03 WHERE id = :i", {"i": rev.id},
-             DENIED)  # fmt: skip
-    _refused(db, "DELETE FROM val.assumption_revisions WHERE id = :i", {"i": rev.id},
-             DENIED)  # fmt: skip
+    _refused(
+        db, "UPDATE val.assumption_revisions SET value = 0.03 WHERE id = :i", {"i": rev.id}, DENIED
+    )
+    _refused(db, "DELETE FROM val.assumption_revisions WHERE id = :i", {"i": rev.id}, DENIED)
     with pytest.raises(IntegrityError, match="one_value"), db.begin_nested():
-        db.add(AssumptionRevision(scenario_id=s.id, scenario_revision_no=2, key="ronic",
-                                  value=Decimal(1), value_json="x", unit="ratio",
-                                  provenance_kind="analyst_assumption", status="approved",
-                                  created_by=user.id))  # fmt: skip
+        db.add(
+            AssumptionRevision(
+                scenario_id=s.id,
+                scenario_revision_no=2,
+                key="ronic",
+                value=Decimal(1),
+                value_json="x",
+                unit="ratio",
+                provenance_kind="analyst_assumption",
+                status="approved",
+                created_by=user.id,
+            )
+        )
         db.flush()
 
 
@@ -272,15 +315,28 @@ def test_runs_and_children_are_immutable(db: Session, tmp_path: Path) -> None:
     p = _project(db, fx, user)
     s = _scenario(db, p, user)
     run = _run(db, fx, p, s, user)
-    db.add_all([
-        RunTrace(run_id=run.id, trace={"n": {}}, trace_sha256=SHA, node_count=1),
-        RunInput(run_id=run.id, input_key="k", value=Decimal(1), unit="ratio",
-                 provenance_kind="analyst_assumption", source_type="assumption_revision",
-                 warnings=[]),
-        RunDecision(run_id=run.id, kind="check_override", code="BALANCE",
-                    reason="Reviewed: rounding in the source filing.", detail={},
-                    user_id=user.id),
-    ])  # fmt: skip
+    db.add_all(
+        [
+            RunTrace(run_id=run.id, trace={"n": {}}, trace_sha256=SHA, node_count=1),
+            RunInput(
+                run_id=run.id,
+                input_key="k",
+                value=Decimal(1),
+                unit="ratio",
+                provenance_kind="analyst_assumption",
+                source_type="assumption_revision",
+                warnings=[],
+            ),
+            RunDecision(
+                run_id=run.id,
+                kind="check_override",
+                code="BALANCE",
+                reason="Reviewed: rounding in the source filing.",
+                detail={},
+                user_id=user.id,
+            ),
+        ]
+    )
     db.flush()
     for sql in (
         "UPDATE val.valuation_runs SET label = 'x' WHERE id = :r",
@@ -291,8 +347,16 @@ def test_runs_and_children_are_immutable(db: Session, tmp_path: Path) -> None:
     ):
         _refused(db, sql, {"r": run.id}, DENIED)
     with pytest.raises(IntegrityError, match="reason"), db.begin_nested():
-        db.add(RunDecision(run_id=run.id, kind="check_override", code="X", reason="short",
-                           detail={}, user_id=user.id))  # fmt: skip
+        db.add(
+            RunDecision(
+                run_id=run.id,
+                kind="check_override",
+                code="X",
+                reason="short",
+                detail={},
+                user_id=user.id,
+            )
+        )
         db.flush()
 
 

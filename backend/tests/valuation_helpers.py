@@ -225,17 +225,36 @@ def b3_assumptions(status: str = "approved") -> list[dict[str, Any]]:
     changes = [
         c
         for c in b1_assumptions(status=status)
-        if c["key"] not in {"beta_levered", "lease_treatment", "capital_structure_basis",
-                            "target_debt_to_equity"}
-    ]  # fmt: skip
+        if c["key"]
+        not in {
+            "beta_levered",
+            "lease_treatment",
+            "capital_structure_basis",
+            "target_debt_to_equity",
+        }
+    ]
     analyst = {"type": "analyst", "reference": "Benchmark B3 (methodology §14)"}
     changes.append({"key": "beta_levered", "value": "1.6", "source": analyst, "status": status})
     changes.append({"key": "cash_yield", "value": "0.03", "source": analyst, "status": status})
     for k, (debt, cash) in enumerate((("450", "150"), ("500", "150"), ("510", "150")), start=1):
-        changes.append({"key": "debt_forecast", "period_index": k, "value": debt,
-                        "source": analyst, "status": status})  # fmt: skip
-        changes.append({"key": "cash_forecast", "period_index": k, "value": cash,
-                        "source": analyst, "status": status})  # fmt: skip
+        changes.append(
+            {
+                "key": "debt_forecast",
+                "period_index": k,
+                "value": debt,
+                "source": analyst,
+                "status": status,
+            }
+        )
+        changes.append(
+            {
+                "key": "cash_forecast",
+                "period_index": k,
+                "value": cash,
+                "source": analyst,
+                "status": status,
+            }
+        )
     return changes
 
 
@@ -244,3 +263,66 @@ B1_PRICE = Decimal("16.088182")
 B1_VD_PRICE = Decimal("15.564694")
 B3_EQUITY = Decimal("1468.334662")
 B3_PRICE = Decimal("14.683347")
+
+
+# ----------------------------------------------------------------------- market & reference data
+
+
+def rate_observation(
+    db: Session, raw_root: Path, *, value: str, obs_date: date = B, series: str = "UST_PAR_10Y"
+) -> Any:
+    """Store one rate observation (percentage points) with an archived synthetic fetch, as the
+    rates store does (D58). Controlled test data on ``erp_test`` only."""
+    from erp_backend.ingestion import archive
+    from erp_backend.models import ProviderFetch, RateObservationRow, RateSeries
+
+    provider = db.get(RateSeries, series).provider_code  # type: ignore[union-attr]
+    stored = archive.store(raw_root, provider, f"{series} {obs_date} {value}".encode())
+    fetch = ProviderFetch(
+        provider_code=provider,
+        url="https://example.invalid/synthetic",
+        http_status=200,
+        content_sha256=stored.sha256,
+        payload_path=stored.relative_path,
+        bytes=stored.size,
+        stored_bytes=stored.stored_size,
+    )
+    db.add(fetch)
+    db.flush()
+    row = RateObservationRow(
+        series_code=series,
+        provider_code=provider,
+        obs_date=obs_date,
+        value=Decimal(value),
+        fetch_id=fetch.id,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def reference_dataset(
+    db: Session, raw_root: Path, *, template: str, data: bytes, edition: date
+) -> uuid.UUID:
+    """Ingest a Damodaran-format CSV through the real reference import (D58)."""
+    from erp_backend.reference.damodaran import ingest as ref_ingest
+
+    result = ref_ingest(
+        db,
+        filename="data.csv",
+        data=data,
+        template=template,
+        edition_date=edition,
+        source_name="Synthetic Damodaran-format test file",
+        expected_sha256=hashlib.sha256(data).hexdigest(),
+        raw_root=raw_root,
+        today=edition,
+    )
+    assert result.dataset_id is not None
+    return result.dataset_id
+
+
+ERP_CSV = (
+    b"as_of_date,index,implied_erp,t_bond_rate,method\n"
+    b"2024-12-01,SP500,5.00%,4.20%,Trailing 12-month cash yield\n"
+)
