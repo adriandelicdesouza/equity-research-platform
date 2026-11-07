@@ -421,6 +421,14 @@ def _assumption_inputs(
                 continue
         elif row.source is not None and row.source.get("type") == "analyst" and spec.market:
             resolved = sources.analyst(row.source, market=True)
+        elif row.source is not None and row.source.get("type") == "analyst":
+            # Non-market analyst sources (ERP, betas, cost of debt, ...) may carry an as_of.
+            # Look-ahead applies to every dated input (Q6); the staleness windows apply only to
+            # the market inputs and reference editions named in Q6, and the document is
+            # unchanged (the source is already stored on the revision).
+            as_of = sources.analyst(row.source, market=False).as_of
+            if as_of is not None and as_of > v:
+                _dated(res, key, as_of, v, months=False)
         if resolved is not None:
             if resolved.superseded:
                 res.add(

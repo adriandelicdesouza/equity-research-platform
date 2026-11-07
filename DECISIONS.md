@@ -715,6 +715,7 @@ These refine the approved architecture. None changes an approved methodology dec
 - **Permissions (Q2, Q3):** the M0 mapping (`valuation:read` all roles, `valuation:write` admin + analyst) on every route; owner-only changes with a reasoned administrator override recorded in the audit event and as a run decision.
 - **API/UI reuse:** D59 read-only sessions, D60 action runner (audit + `api_actions` + `Idempotency-Key`), D61 UI conventions; valuation refusals keep their own `409` code with `details`. No new dependency.
 - **Deferred (Phase 5b):** scenario inheritance and probabilities, sensitivity grids, assumption impact, regression beta; per-year lease forecasts; stub periods; dividends between B and V.
+- **Amendment (Session 15, CNI acceptance):** look-ahead (Q6) also applies to the `as_of` of analyst sources on non-market keys (ERP, betas, cost of debt, spread, ...); before, only market keys and stored rate/price/FX/reference sources were checked, so a post-V analyst ERP was accepted. Staleness windows stay limited to the Q6 inputs, and the input document is unchanged (hash-neutral for valid runs).
 
 ## Public-release decisions (2026-11-06)
 

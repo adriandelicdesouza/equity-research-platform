@@ -328,6 +328,24 @@ def test_lookahead_is_an_error_staleness_a_warning(db: Session, case: Case) -> N
     case.refused("currency_mismatch")
 
 
+def test_lookahead_applies_to_dated_non_market_analyst_sources(db: Session, case: Case) -> None:
+    """Q6: an analyst ERP (or beta, cost of debt) dated after V is look-ahead; staleness
+    windows stay limited to the Q6 market inputs, and the input document is unchanged."""
+    changes = [c for c in b1_assumptions() if c["key"] != "mature_market_erp"]
+    src = {"type": "analyst", "reference": "ERP edition", "as_of": "2025-01-31"}
+    case.assume([*changes, {"key": "mature_market_erp", "value": "0.05", "source": src}])
+    err = case.refused("input_lookahead")
+    assert [d.get("input") for d in err.details] == ["mature_market_erp"]
+    old = {**src, "as_of": "2020-01-31"}  # far beyond 13 months: no staleness rule applies
+    case.assume([{"key": "mature_market_erp", "value": "0.05", "source": old}])
+    run = case.run().run
+    assert run.warnings == []
+    item = run.input_document["inputs"]["assumption:mature_market_erp"]
+    assert item["source"] == old
+    assert (item["source_type"], item["warnings"]) == ("assumption_revision", [])
+    assert "as_of" not in item
+
+
 def test_add_months() -> None:
     assert add_months(date(2024, 1, 31), 13) == date(2025, 2, 28)
     assert add_months(date(2023, 12, 5), 13) == date(2025, 1, 5)
