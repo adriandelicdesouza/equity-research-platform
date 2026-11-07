@@ -61,7 +61,7 @@ Browser ──► Caddy (static frontend, TLS, security headers)
 ```
 
 - **Python 3.12, FastAPI, SQLAlchemy/Alembic, PostgreSQL 17, procrastinate** (job queue), **React 19 + TypeScript + Vite**, **Docker Compose**.
-- **Design notes:** `TECHNICAL_BLUEPRINT.md` (architecture), `DECISIONS.md` (decision log), `KNOWN_LIMITATIONS.md` (data, methodology and operational limitations), `docs/methodology/dcf.md` (valuation conventions).
+- **Design notes:** `TECHNICAL_BLUEPRINT.md` (architecture), `DECISIONS.md` (decision log), `KNOWN_LIMITATIONS.md` (data, methodology and operational limitations), `docs/methodology/dcf.md` (valuation conventions), `docs/architecture/valuation-api.md` (proposed valuation API, not approved).
 
 ## Getting started (development)
 

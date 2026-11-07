@@ -309,6 +309,13 @@ Legend: **[V]** verified by live probe on 2026-11-06 · **[A]** assessment, not 
 - **Synchronous actions:** verify and builds block their dialog for a few seconds; there is no progress indicator beyond "Working…".
 - **Session expiry** returns to sign-in and loses unsaved form input.
 
+## 4q. Valuation workflow (M3 phase 5: design only, Session 13)
+
+- **Not implemented:** no valuation project, run, scenario or sensitivity API, schema or UI exists. The proposed design (`docs/architecture/valuation-api.md`) awaits approval (P16).
+- **Permissions already mapped but unused:** `valuation:read` (admin, analyst, reviewer) and `valuation:write` (admin, analyst) have been granted in `auth/rbac.py` since M0, but no route checks them. Their confirmation is approval question Q2 of the design.
+- **Inputs the design depends on are largely unavailable in the dev database:** runs need a locked dataset, and locking via the API awaits P15 (the CLI is the owner's route); there are no rate observations, FX rates or prices (providers disabled, P9) and no Damodaran reference datasets (Session 12 state). Until then, a valuation could use only analyst-entered market inputs with written sources.
+- **Data structures the Blueprint lists for valuation do not exist yet:** `fin.capital_instruments`, `fin.share_counts`, `fin.analyst_adjustments`. The design proposes run-level overrides and per-scenario instrument assumptions instead (Q10).
+
 ## 5. Unresolved items
 
 Status as of 2026-11-06. See `DECISIONS.md` → Pending decisions.

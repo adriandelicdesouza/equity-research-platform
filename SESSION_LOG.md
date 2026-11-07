@@ -678,3 +678,15 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
 - **Docs:** D61 rates/FX rules, `workflow-ui.md`, KNOWN_LIMITATIONS §4p, README, handoff.
 - **Verification:** `make check` pass (engine 109, backend 734, frontend 105); `make api-types` no diff; fresh clone: `npm ci`, tsc, ESLint, 105 tests, build. Integrated check (rebuilt web image, dev admin over HTTPS, password never printed): 21/21 — bundle under the production CSP; 401 without a session; 19 series, both providers, unit `percent`, all with 0 observations; provider/currency filter (6 GoC); unknown series 404; FX USD→CAD and reverse empty (never derived); same-currency and reversed-range FX → 422; no actions recorded.
 - **Dev DB impact:** `audit_events` +2 (login/logout) only; rate series, observations, FX, provider fetches unchanged; all providers still disabled; no external request; no permission granted (P15 open).
+
+### Session 13 — M3 phase 5: valuation API design (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `771bb0b` = `origin/m2-ingestion`; only the owner's untracked root transcript (preserved, untouched). Dev stack down.
+- **Type:** design only. No migration, route, permission, engine or UI change; `auth/rbac.py` untouched.
+- **Read:** MASTER_BRIEF (in full: new milestone), Blueprint §3, §6–§8, §10, §11, §14; D8–D27, D35–D39, D50–D53, D58–D61, pending P1–P15; `rbac.py`, `deps.py`, `workflow.py`, `audit.py`, `errors.py`, `readonly.py`, `fin`/`ref`/`market` models, engine `api.py`, `inputs.py`, `wacc.py`, `classification.py`, `version.py`, mapping v2 line items.
+- **Finding:** `valuation:read` / `valuation:write` were defined **and mapped** in M0 (`8b3606d`: admin all, analyst read + write, reviewer read) but no route uses them. Recorded as approval question Q2 rather than changed.
+- **Finding:** the Blueprint's `fin.capital_instruments`, `fin.share_counts`, `fin.analyst_adjustments` and `ref.classification_policies` don't exist; the design proposes run-level overrides, per-scenario instrument assumptions and versioned classification blocks (`ref.valuation_blocks`) checked against the engine gate.
+- **Deliverable:** `docs/architecture/valuation-api.md` (proposed, P16): architecture, projects, immutable run model (stored / referenced / snapshotted / reconstructed), input selection and validation (units, currency, staleness, look-ahead, superseded revisions), methodology scope (Phase 5 vs 5b vs R4), classification blocks, permission matrix, endpoint contracts, `val` schema proposal (migration `0017`), validation/audit rules, dependency chain, approval questions Q1–Q12, implementation sequence.
+- **Docs:** DECISIONS pending P16; KNOWN_LIMITATIONS §4q; README pointer; this handoff.
+- **Verification:** `make check-ignored`, lint (ruff, import contracts 4/4, ESLint), typecheck (mypy, tsc), engine 109, frontend 105 pass. Backend suite not run: dev stack down and no backend code, schema or fixture changed. FORBIDDEN-pattern and secret checks on the staged diff: clean.
+- **Not pushed:** design work is not a completed milestone.
