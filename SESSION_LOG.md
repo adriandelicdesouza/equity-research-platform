@@ -505,3 +505,19 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - RY / XTSE / CAD via `--same-issuer-as RY:XNYS` was valid;
   - a `--new-issuer "Royal Bank of Canada"` proposal was refused (`possible_existing_issuer`, with an EUR currency error).
 - **Tests:** 44 new (backend 396 → 440), including the RY/XTSE CSV integration on `erp_test` with synthetic prices. `make check` passes. No network requests; all providers disabled.
+
+### Session 4 close — handoff (2026-11-07)
+
+- **Verified:**
+  - `m2-ingestion` @ `9d540cd`, clean, 10 commits ahead of `origin/m2-ingestion` (`51cd1fa`);
+  - remote-tracking reflog: last push 2026-11-06, nothing pushed since;
+  - no `erp-` containers running;
+  - every hash cited in `NEXT_SESSION.md` resolves.
+- **Dev DB not restarted:** its state (Alembic `0012`, all providers disabled, 0 prices, imports or registrations) was last checked before the stack was stopped at the end of the listing milestone. Nothing ran since.
+- **`NEXT_SESSION.md` rewritten:**
+  - verified state;
+  - capability table separating implemented, tested offline and externally unverified;
+  - outstanding limitations;
+  - the §4.6 statement-import milestone, with the reconciliation (§4.6/§4.2/D16), the infrastructure to reuse, and the schema facts to resolve (`provenance_kind` allows only reported/derived/analyst, no `import_id` on values, required dataset header fields);
+  - start-up commands.
+- **No code or database changes.** `make check` was not re-run; the last result (backend 440, engine 109, frontend 2) is from `9d540cd`.
