@@ -645,3 +645,12 @@ All owner-approved, nothing pushed. Backups are outside the repository: `2026110
   - a statement preview returned a report (file error) and stored nothing;
   - `GET /actions` was empty; logout → 401.
 - **Dev DB impact:** only the login/logout `audit_events` (+2) and one session row. `api_actions` stayed at 0; datasets, values, conflicts, resolutions, imports, companies and provider fetches were unchanged. No external or provider requests; no permission was assigned (`auth/rbac.py` untouched).
+
+### Session 10 — Claude Code workflow tooling (2026-11-07)
+
+- **Start verified:** `m2-ingestion` @ `8a46a83` = `origin/m2-ingestion`; working tree: the owner's uncommitted `CLAUDE.md` section and an untracked root transcript (owner-owned). No application code changed this session.
+- **Audit:** backend fixtures were already per-test rolled-back sessions (`db`, `client`, `wf_client`); no sleeps in backend or frontend tests; the JSON-text comparison in `test_market_import.py` is an intentional determinism check. No `.claude/` skills, hooks or project settings existed.
+- **Added:** `make check-ignored` (`infra/scripts/check-ignored-sources.sh`, allow-list of generated/local/data paths; first step of `make check`; verified to flag a recreated `frontend/src/features/datasets/` with its rule); `make fmt` (ruff format + fix of changed/untracked `engine`/`backend` Python files only; verified on a probe file, nothing else touched); `/handoff` skill (`.claude/skills/handoff/SKILL.md`, user-invoked only, never pushes).
+- **Deferred:** a format-on-edit Ruff hook: rewriting files after each edit makes later edits in the same batch fail on stale anchors. Recorded in `docs/DEVELOPMENT.md`.
+- **`CLAUDE.md`** (left uncommitted for owner review, since it contains the owner's edit): merged the two continuity sections; added Definition of Done, testing, SQLAlchemy, formatting and Git-integrity conventions; push now needs explicit owner authorization; the full MASTER_BRIEF read is limited to new milestones and scope changes (it conflicted with the context rules).
+- **Verification:** `make check-ignored`, lint, typecheck, engine 109, frontend 62 pass. Backend suite not run (dev stack down; no backend or fixture change).

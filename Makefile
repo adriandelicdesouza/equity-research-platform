@@ -7,7 +7,7 @@ DEV   := docker compose --env-file .env.dev -f infra/compose.yaml -f infra/compo
 
 .PHONY: help tools setup env-dev secrets-dev data-dev up-dev down-dev ps-dev logs-dev \
         build-dev create-admin-dev enqueue-ping-dev api-types lint typecheck test test-backend test-engine test-frontend \
-        check measure-memory
+        check check-ignored fmt measure-memory
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | sort | tr '\n' ' '; echo
@@ -55,6 +55,17 @@ create-admin-dev:  ## creates 'admin' with secrets/dev/initial_admin_password
 api-types:        ## regenerate frontend/src/api/schema.gen.ts from the backend OpenAPI schema (D61)
 	$(PY) frontend/scripts/gen_api_types.py
 
+check-ignored:    ## fail if .gitignore hides anything but generated/local/data paths
+	infra/scripts/check-ignored-sources.sh
+
+fmt:              ## ruff format + autofix only Python files changed vs HEAD (incl. untracked)
+	@files="$$( { git diff --name-only --diff-filter=d HEAD; git ls-files -o --exclude-standard; } \
+	  | grep -E '^(engine|backend)/.*\.py$$' | sort -u )"; \
+	if [ -z "$$files" ]; then echo "fmt: no changed Python files"; exit 0; fi; \
+	echo "$$files" | xargs $(UV) run --all-packages ruff format && \
+	echo "$$files" | xargs $(UV) run --all-packages ruff check --fix; \
+	echo "fmt: re-read these files before further edits:"; echo "$$files" | sed 's/^/  /'
+
 lint:
 	$(UV) run --all-packages ruff check engine backend
 	$(UV) run --all-packages ruff format --check engine backend
@@ -76,7 +87,7 @@ test-frontend:
 
 test: test-engine test-backend test-frontend
 
-check: lint typecheck test
+check: check-ignored lint typecheck test
 
 measure-memory:   ## usage: make measure-memory LABEL=idle
 	infra/scripts/measure-memory.sh $(or $(LABEL),snapshot)

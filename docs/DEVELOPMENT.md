@@ -47,10 +47,22 @@ docker cp erp-dev-web-1:/data/caddy/pki/authorities/local/root.crt ./caddy-root.
 ## Checks
 
 ```bash
-make check         # ruff, ruff format --check, eslint, mypy --strict, tsc, pytest, vitest
+make check         # check-ignored, ruff, ruff format --check, eslint, mypy --strict, tsc, pytest, vitest
+make check-ignored # fails if .gitignore hides anything but generated/local/data paths
+make fmt           # ruff format + ruff check --fix on changed/untracked engine/backend .py files only
 make api-types     # regenerate frontend/src/api/schema.gen.ts after a backend schema change (D61)
 make test-backend  # needs the dev DB; uses a disposable 'erp_test' database
 ```
+
+`check-ignored` (`infra/scripts/check-ignored-sources.sh`) exists because the data rule
+`datasets/` once matched `frontend/src/features/datasets/`: local checks passed while a clean
+checkout could not build. Extend its allow-list only for genuinely generated paths.
+
+Claude Code workflow: conventions are in `CLAUDE.md`; `/handoff`
+(`.claude/skills/handoff/SKILL.md`) verifies state and updates `NEXT_SESSION.md` /
+`SESSION_LOG.md`. A format-on-edit hook was evaluated and not installed: it rewrites a file
+after every edit, so further edits prepared from the earlier text fail on stale anchors. Run
+`make fmt` once before final verification instead, then re-read the formatted files.
 
 Backend tests:
 - They create and drop only databases named `erp_test*`, using the dev superuser.
