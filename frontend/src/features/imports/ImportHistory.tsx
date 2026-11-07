@@ -12,19 +12,11 @@ import {
   Loading,
   Pager,
 } from "../../components/ui";
+import { formatCounts } from "../../lib/format";
 import { href, navigate, type Route, withQuery } from "../../lib/router";
 import { RecordsTable } from "./PreviewReportView";
 
 const LIMIT = 50;
-
-function counts(obj: Record<string, unknown>): string {
-  return (
-    Object.entries(obj)
-      .filter(([, v]) => typeof v === "number")
-      .map(([k, v]) => `${k} ${String(v)}`)
-      .join(" · ") || "—"
-  );
-}
 
 export function ImportHistory({ route }: { route: Route }) {
   const category = route.query.get("category") ?? "";
@@ -83,7 +75,7 @@ export function ImportHistory({ route }: { route: Route }) {
                     <Badge value={i.status} />
                   </td>
                   <td className="small">
-                    {counts(i.record_counts)}
+                    {formatCounts(i.record_counts)}
                     {i.skipped_count > 0 && <div>skipped {i.skipped_count}</div>}
                   </td>
                   <td>
@@ -126,7 +118,7 @@ export function ImportDetail({ importId }: { importId: string }) {
             ["Source", d.source_name],
             ["Source reference", d.source_reference],
             ["Imported", <DateTime key="t" value={d.imported_at} />],
-            ["Record counts", counts(d.record_counts)],
+            ["Record counts", formatCounts(d.record_counts)],
             ["Import id", <code key="i">{d.id}</code>],
           ]}
         />

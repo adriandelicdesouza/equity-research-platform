@@ -10,16 +10,9 @@ import {
   KV,
   Loading,
 } from "../../components/ui";
+import { formatCounts } from "../../lib/format";
 import { href, type Route } from "../../lib/router";
 import { datasetLabel, useSelectedDataset } from "./datasetSelection";
-
-/** "passed 400 · failed 12" from a {status: count} map, in the API's own vocabulary. */
-export function formatCounts(obj: Record<string, unknown>): string {
-  const parts = Object.entries(obj)
-    .filter(([, v]) => typeof v === "number")
-    .map(([k, v]) => `${k.replaceAll("_", " ")} ${String(v)}`);
-  return parts.length ? parts.join(" · ") : "none";
-}
 
 function importIds(details: DatasetDetailOut[]): string[] {
   const ids = new Set<string>();
